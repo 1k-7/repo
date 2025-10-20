@@ -10,7 +10,7 @@ logger.info("Starting Bot...")
 
 import os
 import time
-import asyncio # Keep asyncio for potential use in Bot.start() etc.
+import asyncio # Use standard asyncio
 import threading
 import requests
 from hydrogram import types, Client, idle
@@ -21,11 +21,11 @@ from web import web_app # Defined in web/__init__.py
 from info import (LOG_CHANNEL, API_ID, API_HASH, BOT_TOKEN, PORT, ADMINS, URL)
 from utils import temp, get_readable_time
 from database.users_chats_db import db
-import uvloop # Import uvloop
+# import uvloop # Removed uvloop import
 
 class Bot(Client):
+    # __init__ remains the same as previous version
     def __init__(self):
-        # Initialize Client first
         super().__init__(
             name='Auto_Filter_Bot',
             api_id=API_ID,
@@ -37,8 +37,8 @@ class Bot(Client):
         )
         logger.info("Bot Client Initialized.")
 
+    # start() method remains the same as previous version
     async def start(self):
-        # This now runs within the loop created by app.run()
         try:
             await super().start()
             temp.START_TIME = time.time()
@@ -46,7 +46,7 @@ class Bot(Client):
 
             # Fetch banned lists (run sync in executor)
             try:
-                 loop = asyncio.get_running_loop() # Get loop safely now
+                 loop = asyncio.get_running_loop()
                  b_users, b_chats = await loop.run_in_executor(None, db.get_banned)
                  logger.info("Fetched banned lists.")
             except Exception as db_err:
@@ -73,12 +73,12 @@ class Bot(Client):
             temp.B_NAME = me.first_name
             logger.info(f"Bot Info: ID={me.id}, Username=@{me.username}")
 
-            # Start web server (Needs to run within the main loop)
+            # Start web server
             try:
                 web_runner = web.AppRunner(web_app)
                 await web_runner.setup()
                 site = web.TCPSite(web_runner, "0.0.0.0", PORT)
-                await site.start() # Start site within the running loop
+                await site.start()
                 logger.info(f"Web server started on port {PORT}.")
             except OSError as e: logger.error(f"Web server failed: Port {PORT} busy? Error: {e}")
             except Exception as e: logger.error(f"Web server failed: {e}", exc_info=True)
@@ -93,9 +93,10 @@ class Bot(Client):
 
         except Exception as start_err:
              logger.critical(f"Critical error during bot start method: {start_err}", exc_info=True)
-             # Consider stopping the client gracefully if start fails critically
-             # await self.stop()
+             # Raising the exception might help pinpoint the issue further or stop gracefully
+             raise start_err # Re-raise exception
 
+    # stop() method remains the same
     async def stop(self, *args):
         logger.info("Stopping bot...")
         await super().stop()
@@ -118,7 +119,7 @@ class Bot(Client):
                 yield message
                 current = message.id
 
-# --- Keepalive Ping Thread ---
+# --- Keepalive Ping Thread (remains the same) ---
 def ping_loop():
     ping_interval = 180 # 3 minutes
     logger.info("Keepalive ping thread initiated.")
@@ -134,34 +135,46 @@ def ping_loop():
         except requests.exceptions.Timeout: logger.error("Keepalive ping timed out ❌")
         except requests.exceptions.RequestException as e: logger.error(f"Keepalive ping exception: {e} ❌")
         except Exception as e: logger.error(f"Unexpected ping error: {e} ❌", exc_info=True)
-        finally: time.sleep(ping_interval)
+        finally: time.sleep(ping_interval) # Wait regardless of outcome
 
-# --- Start Bot ---
+# --- Define main async function ---
+async def main():
+    # Instantiate the Bot *inside* the main async function
+    app = Bot()
+    logger.info("Bot instance created inside main().")
+
+    # Start the ping thread (can start here or outside, doesn't matter much for daemon)
+    threading.Thread(target=ping_loop, daemon=True, name="PingThread").start()
+    logger.info("Keepalive ping thread started.")
+
+    # Start the Hydrogram client and web server (within Bot.start)
+    await app.start()
+
+    # Keep the bot running until interrupted
+    logger.info("Bot is running. Idling...")
+    await idle()
+
+    # Stop the bot gracefully on exit
+    await app.stop()
+
+# --- Run the main async function ---
 if __name__ == "__main__":
     try:
-        # Install uvloop policy *before* creating the Client instance
-        uvloop.install()
-        logger.info("uvloop installed.")
-
-        # Start the ping thread (daemon ensures it exits when main thread does)
-        threading.Thread(target=ping_loop, daemon=True, name="PingThread").start()
-        logger.info("Keepalive ping thread started.")
-
-        # Instantiate the Bot
-        app = Bot()
-        logger.info("Bot instance created. Starting run()...")
-
-        # Run the Hydrogram client. This creates/manages the asyncio event loop.
-        app.run()
-
-    # Catch specific RuntimeError
+        # Use asyncio.run() to manage the event loop for the main() coroutine
+        # Do not install uvloop here, let asyncio.run() use the default loop
+        logger.info("Starting asyncio.run(main())...")
+        asyncio.run(main())
     except RuntimeError as e:
+         # Log the specific loop error if it still happens
          if "There is no current event loop" in str(e):
-              logger.critical(f"FATAL: {e}. Event loop error during startup.")
+              logger.critical(f"FATAL: {e}. Event loop error during asyncio.run().")
          else:
-              logger.critical(f"Bot startup failed - RuntimeError: {e}", exc_info=True)
+              logger.critical(f"Bot failed - RuntimeError: {e}", exc_info=True)
+    except KeyboardInterrupt:
+         logger.info("Bot stopped manually (KeyboardInterrupt).")
     except Exception as main_err:
-        logger.critical(f"Bot failed unexpectedly: {main_err}", exc_info=True)
+        logger.critical(f"Bot failed unexpectedly in __main__: {main_err}", exc_info=True)
     finally:
          logger.info("Bot process ended.")
+         # import sys
          # sys.exit(1) # Optional exit code
