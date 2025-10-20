@@ -39,42 +39,63 @@ async def start(client, message):
     loop = asyncio.get_running_loop() # Get loop for sync calls
     # Group Join Handling
     if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
-        # Wrap sync db.get_chat - but db object itself doesn't have get_chat
-        # Need to use the correct method from the db instance
+        # Wrap sync db.get_chat
         chat_status = await loop.run_in_executor(None, db.get_chat, message.chat.id) # Corrected call
         # Check if chat exists by looking at a known field or if it returns default
-        if chat_status.get('reason') == '' and not chat_status.get('is_disabled'): # Check default values
-            # Assuming if it returns default, it might not exist (or just hasn't been disabled)
-            # A better check might be needed in users_chats_db.py if adding groups is crucial
-            # For now, let's assume this check is sufficient or add_chat handles duplicates
+        # A better check might involve checking if the document exists directly
+        chat_exists = await loop.run_in_executor(None, lambda: db.grp.find_one({'id': message.chat.id}) is not None)
+        if not chat_exists:
             try:
                 total = await client.get_chat_members_count(message.chat.id)
                 username = f'@{message.chat.username}' if message.chat.username else 'ᴘʀɪᴠᴀᴛᴇ'
                 await client.send_message(LOG_CHANNEL, script.NEW_GROUP_TXT.format(message.chat.title, message.chat.id, username, total))
-                await loop.run_in_executor(None, db.add_chat, message.chat.id, message.chat.title) # Wrap sync
-            except Exception as e: logger.error(f"Error logging/adding group {message.chat.id}: {e}")
-        wish = get_wish(); user = message.from_user.mention if message.from_user else "ᴅᴇᴀʀ"
-        btn = [[ InlineKeyboardButton('✨ ᴜᴘᴅᴀᴛᴇs', url=UPDATES_LINK), InlineKeyboardButton('💬 sᴜᴘᴘᴏʀᴛ', url=SUPPORT_LINK) ]]
-        await message.reply(f"<b>ʜᴇʏ {user}, <i>{wish}</i>\nʜᴏᴡ ᴄᴀɴ ɪ ʜᴇʟᴘ?</b>", reply_markup=InlineKeyboardMarkup(btn)); return
+                # Wrap sync db.add_chat
+                await loop.run_in_executor(None, db.add_chat, message.chat.id, message.chat.title)
+            except Exception as e:
+                logger.error(f"Error logging/adding group {message.chat.id}: {e}")
+        wish = get_wish()
+        user = message.from_user.mention if message.from_user else "ᴅᴇᴀʀ"
+        btn = [[ InlineKeyboardButton('✨ ᴜᴘᴅᴀᴛᴇs', url=UPDATES_LINK),
+                 InlineKeyboardButton('💬 sᴜᴘᴘᴏʀᴛ', url=SUPPORT_LINK) ]]
+        await message.reply(text=f"<b>ʜᴇʏ {user}, <i>{wish}</i>\nʜᴏᴡ ᴄᴀɴ ɪ ʜᴇʟᴘ ʏᴏᴜ?</b>", reply_markup=InlineKeyboardMarkup(btn))
+        return
 
     # New User Handling in PM
     user_id = message.from_user.id
-    user_exists = await loop.run_in_executor(None, db.is_user_exist, user_id) # Wrap sync
+    # Wrap sync db.is_user_exist
+    user_exists = await loop.run_in_executor(None, db.is_user_exist, user_id)
     if not user_exists:
-        try: await loop.run_in_executor(None, db.add_user, user_id, message.from_user.first_name); await client.send_message(LOG_CHANNEL, script.NEW_USER_TXT.format(message.from_user.mention, user_id)) # Wrap sync
-        except Exception as e: logger.error(f"Error adding user {user_id}: {e}")
+        try:
+             # Wrap sync db.add_user
+             await loop.run_in_executor(None, db.add_user, user_id, message.from_user.first_name)
+             await client.send_message(LOG_CHANNEL, script.NEW_USER_TXT.format(message.from_user.mention, user_id))
+        except Exception as e:
+             logger.error(f"Error adding new user {user_id}: {e}")
 
-    # Verify Status Check (Use async wrapper)
+    # Verify Status Check (Uses async wrapper get_verify_status)
     verify_status = await get_verify_status(user_id)
-    # Correct expiry check using .replace for timezone comparison if needed
-    is_expired = isinstance(verify_status.get('expire_time'), datetime) and datetime.now(timezone.utc) > verify_status['expire_time'].replace(tzinfo=timezone.utc)
+    # Correct expiry check
+    expire_time = verify_status.get('expire_time')
+    is_expired = isinstance(expire_time, datetime) and datetime.now(timezone.utc) > expire_time.replace(tzinfo=timezone.utc)
     if verify_status.get('is_verified') and is_expired:
-        logger.info(f"Verification expired user {user_id}"); await update_verify_status(user_id, is_verified=False) # Async wrapper
+        logger.info(f"Verification expired for user {user_id}")
+        await update_verify_status(user_id, is_verified=False) # Uses async wrapper
 
     # --- Start Parameter Handling ---
     if len(message.command) == 1 or message.command[1] == 'start':
-        buttons = [[ InlineKeyboardButton("➕ ᴀᴅᴅ ᴍᴇ", url=f'http://t.me/{temp.U_NAME}?startgroup=start') ], [ InlineKeyboardButton('✨ ᴜᴘᴅᴀᴛᴇs', url=UPDATES_LINK), InlineKeyboardButton('💬 sᴜᴘᴘᴏʀᴛ', url=SUPPORT_LINK) ], [ InlineKeyboardButton('❔ ʜᴇʟᴘ', callback_data='help'), InlineKeyboardButton('🔍 ɪɴʟɪɴᴇ', switch_inline_query_current_chat=''), InlineKeyboardButton('ℹ️ ᴀʙᴏᴜᴛ', callback_data='about') ]]
-        await message.reply_photo(random.choice(PICS), caption=script.START_TXT.format(message.from_user.mention, get_wish()), reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.HTML); return
+        buttons = [[ InlineKeyboardButton("➕ ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ", url=f'http://t.me/{temp.U_NAME}?startgroup=start') ],
+                   [ InlineKeyboardButton('✨ ᴜᴘᴅᴀᴛᴇs', url=UPDATES_LINK), InlineKeyboardButton('💬 sᴜᴘᴘᴏʀᴛ', url=SUPPORT_LINK) ],
+                   [ InlineKeyboardButton('❔ ʜᴇʟᴘ', callback_data='help'),
+                     InlineKeyboardButton('🔍 ɪɴʟɪɴᴇ', switch_inline_query_current_chat=''),
+                     InlineKeyboardButton('ℹ️ ᴀʙᴏᴜᴛ', callback_data='about') ]]
+        reply_markup = InlineKeyboardMarkup(buttons)
+        await message.reply_photo(
+            photo=random.choice(PICS),
+            caption=script.START_TXT.format(message.from_user.mention, get_wish()),
+            reply_markup=reply_markup,
+            parse_mode=enums.ParseMode.HTML
+        )
+        return
 
     mc = message.command[1] # Parameter
 
@@ -86,14 +107,14 @@ async def start(client, message):
         except Exception as e: logger.error(f"PM settings link error {group_id}: {e}"); await message.reply("Error fetch settings."); return
 
     elif mc == 'inline_fsub':
-        btn = await is_subscribed(client, message); # await
+        btn = await is_subscribed(client, message);
         if btn: await message.reply("❗ᴊᴏɪɴ ᴄʜᴀɴɴᴇʟ(s).", reply_markup=InlineKeyboardMarkup(btn))
         else: await message.reply("✅ ᴀʟʀᴇᴀᴅʏ sᴜʙsᴄʀɪʙᴇᴅ."); return
 
     elif mc.startswith('verify_'):
         try: _, token = mc.split("_", 1)
         except ValueError: return await message.reply("Invalid link.")
-        verify_status = await get_verify_status(user_id); # await
+        verify_status = await get_verify_status(user_id);
         if verify_status.get('verify_token') != token: return await message.reply("❌ ᴛᴏᴋᴇɴ ɪɴᴠᴀʟɪᴅ/ᴇxᴘɪʀᴇᴅ.")
         expiry_time = datetime.now(timezone.utc) + timedelta(seconds=VERIFY_EXPIRE)
         await update_verify_status(user_id, is_verified=True, expire_time=expiry_time, verify_token="") # await
@@ -103,15 +124,31 @@ async def start(client, message):
 
     # --- File Request Handling ---
     verify_status = await get_verify_status(user_id) # await
-    is_expired = isinstance(verify_status.get('expire_time'), datetime) and datetime.now(timezone.utc) > verify_status['expire_time'].replace(tzinfo=timezone.utc)
+    expire_time = verify_status.get('expire_time') # Get expire time again after potential update
+    is_expired = isinstance(expire_time, datetime) and datetime.now(timezone.utc) > expire_time.replace(tzinfo=timezone.utc)
+
     if IS_VERIFY and (not verify_status.get('is_verified') or is_expired):
         if is_expired: await update_verify_status(user_id, is_verified=False) # await
         token = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
+        # Store original file request param (`mc`) in link field
         await update_verify_status(user_id, verify_token=token, link="" if mc == 'inline_verify' else mc) # await
         try:
-             settings = await get_settings(int(mc.split("_")[1])) # await
-             short_url, short_api, tutorial = settings.get('url', SHORTLINK_URL), settings.get('api', SHORTLINK_API), settings.get('tutorial', VERIFY_TUTORIAL)
+             # Need group ID to get settings, extract carefully
+             grp_id_for_settings = None
+             if mc.startswith(('file_', 'shortlink_', 'all_')):
+                  parts = mc.split("_")
+                  if len(parts) >= 2 and parts[1].lstrip('-').isdigit():
+                       grp_id_for_settings = int(parts[1])
+
+             if grp_id_for_settings:
+                 settings = await get_settings(grp_id_for_settings) # await
+                 short_url, short_api = settings.get('url', SHORTLINK_URL), settings.get('api', SHORTLINK_API)
+                 tutorial = settings.get('tutorial', VERIFY_TUTORIAL)
+             else: # Fallback if group ID couldn't be extracted
+                  short_url, short_api, tutorial = SHORTLINK_URL, SHORTLINK_API, VERIFY_TUTORIAL
+
         except (IndexError, ValueError, TypeError): short_url, short_api, tutorial = SHORTLINK_URL, SHORTLINK_API, VERIFY_TUTORIAL
+
         verify_link = f'https://t.me/{temp.U_NAME}?start=verify_{token}'
         try: short_link = await get_shortlink(short_url, short_api, verify_link) # await
         except Exception as e: logger.error(f"Verify shortlink error: {e}"); short_link = verify_link
@@ -139,7 +176,7 @@ async def start(client, message):
                 other_btns = [[ InlineKeyboardButton('✨ ᴜᴘᴅᴀᴛᴇs', url=UPDATES_LINK), InlineKeyboardButton('💬 sᴜᴘᴘᴏʀᴛ', url=SUPPORT_LINK) ]]
                 markup = InlineKeyboardMarkup(stream_btn + other_btns)
                 try: msg = await client.send_cached_media(user_id, fid, caption=f_cap[:1024], protect_content=settings.get('file_secure', PROTECT_CONTENT), reply_markup=markup); sent.append(msg.id); await asyncio.sleep(0.5)
-                except FloodWait as e: logger.warning(f"Flood send {fid}: {e.value}s"); await asyncio.sleep(e.value); msg = await client.send_cached_media(user_id, fid, caption=f_cap[:1024], protect_content=settings.get('file_secure', PROTECT_CONTENT), reply_markup=markup); sent.append(msg.id)
+                except FloodWait as e: logger.warning(f"Flood send {fid}: {e.value}s"); await asyncio.sleep(e.value); msg = await client.send_cached_media(user_id, fid, caption=f_cap[:1024], protect_content=settings.get('file_secure', PROTECT_CONTENT), reply_markup=markup); sent.append(msg.id) # Retry
                 except Exception as e: logger.error(f"Error send file {fid} to {user_id}: {e}")
             pm_del = PM_FILE_DELETE_TIME; time_r = get_readable_time(pm_del)
             info = await message.reply(f"⚠️ ɴᴏᴛᴇ: ғɪʟᴇs ᴅᴇʟᴇᴛᴇᴅ ɪɴ <b>{time_r}</b>.", quote=True)
@@ -175,18 +212,22 @@ async def start(client, message):
             markup = InlineKeyboardMarkup(stream_btn + other_btns)
             vp = None # Initialize vp
             try: vp = await client.send_cached_media(user_id, file_id, caption=f_cap[:1024], protect_content=settings.get('file_secure', PROTECT_CONTENT), reply_markup=markup)
-            except FloodWait as e: logger.warning(f"Flood send file {file_id}: {e.value}s"); await asyncio.sleep(e.value); vp = await client.send_cached_media(user_id, file_id, caption=f_cap[:1024], protect_content=settings.get('file_secure', PROTECT_CONTENT), reply_markup=markup)
+            except FloodWait as e: logger.warning(f"Flood send file {file_id}: {e.value}s"); await asyncio.sleep(e.value); vp = await client.send_cached_media(user_id, file_id, caption=f_cap[:1024], protect_content=settings.get('file_secure', PROTECT_CONTENT), reply_markup=markup) # Retry
             except Exception as e: logger.error(f"Error send file {file_id} to {user_id}: {e}"); await message.reply("❌ ᴇʀʀᴏʀ sᴇɴᴅɪɴɢ."); return
             pm_del = PM_FILE_DELETE_TIME; time_r = get_readable_time(pm_del)
-            # Check if vp exists before replying
-            if vp: msg_timer = await vp.reply(f"⚠️ ɴᴏᴛᴇ: ᴅᴇʟᴇᴛᴇᴅ ɪɴ <b>{time_r}</b>.", quote=True)
-            else: msg_timer = await message.reply(f"⚠️ ɴᴏᴛᴇ: ᴅᴇʟᴇᴛᴇᴅ ɪɴ <b>{time_r}</b>.", quote=True) # Fallback reply if vp failed
+            msg_timer = await vp.reply(f"⚠️ ɴᴏᴛᴇ: ᴅᴇʟᴇᴛᴇᴅ ɪɴ <b>{time_r}</b>.", quote=True) if vp else await message.reply(f"⚠️ ɴᴏᴛᴇ: ᴅᴇʟᴇᴛᴇᴅ ɪɴ <b>{time_r}</b>.", quote=True)
             await asyncio.sleep(pm_del)
             del_btns = [[ InlineKeyboardButton('🔄 ɢᴇᴛ ᴀɢᴀɪɴ', callback_data=f"get_del_file#{grp_id}#{file_id}") ]]
             try: await msg_timer.delete()
             except: pass
-            if vp: try: await vp.delete(); logger.info(f"Auto-deleted file {file_id} user {user_id}")
-            except Exception as e: logger.error(f"Error auto-del file {vp.id}: {e}")
+            # **** CORRECTED SYNTAX ****
+            if vp:
+                try:
+                    await vp.delete()
+                    logger.info(f"Auto-deleted file {file_id} user {user_id}")
+                except Exception as e:
+                    logger.error(f"Error auto-deleting file {vp.id}: {e}")
+            # **** END CORRECTION ****
             try: await message.reply("❗️ ғɪʟᴇ ᴅᴇʟᴇᴛᴇᴅ.", reply_markup=InlineKeyboardMarkup(del_btns))
             except Exception as e: logger.warning(f"Could not send 'file gone' {user_id}: {e}"); return
         else: await message.reply("❓ ɪɴᴠᴀʟɪᴅ sᴛᴀʀᴛ.")
@@ -194,7 +235,7 @@ async def start(client, message):
 
 
 @Client.on_message(filters.command('link'))
-async def link(bot, message):
+async def link_cmd(bot, message): # Renamed
     msg = message.reply_to_message
     if not msg: return await message.reply('⚠️ ʀᴇᴘʟʏ ᴛᴏ ᴍᴇᴅɪᴀ.')
     media = getattr(msg, msg.media.value, None) if msg.media else None
@@ -209,7 +250,7 @@ async def link(bot, message):
     except Exception as e: logger.error(f"Link cmd error: {e}", exc_info=True); await message.reply('❌ ᴇʀʀᴏʀ.')
 
 @Client.on_message(filters.command('index_channels') & filters.user(ADMINS))
-async def channels_info(bot, message):
+async def channels_info_cmd(bot, message): # Renamed
     ids = INDEX_CHANNELS; text = '**ɪɴᴅᴇxᴇᴅ ᴄʜᴀɴɴᴇʟs:**\n\n'
     if not ids: return await message.reply("ɴᴏ ɪɴᴅᴇx ᴄʜᴀɴɴᴇʟs.")
     for id_ in ids:
@@ -218,7 +259,7 @@ async def channels_info(bot, message):
     await message.reply(text + f'\n**ᴛᴏᴛᴀʟ:** {len(ids)}')
 
 @Client.on_message(filters.command('stats') & filters.user(ADMINS))
-async def stats(bot, message):
+async def stats_cmd(bot, message): # Renamed
     loop = asyncio.get_running_loop()
     sts_msg = await message.reply("📊 ɢᴀᴛʜᴇʀɪɴɢ sᴛᴀᴛs...")
 
@@ -282,10 +323,14 @@ async def connect_cmd(client, message): # Renamed function
         if len(message.command) > 1:
             try: grp_id = int(message.command[1])
             except ValueError: return await message.reply("ɪɴᴠᴀʟɪᴅ ɪᴅ.")
-            if not await is_check_admin(client, grp_id, message.from_user.id): return await message.reply('ɴᴏᴛ ᴀᴅᴍɪɴ ɪɴ ᴛʜᴀᴛ ɢʀᴏᴜᴘ.')
-            chat = await client.get_chat(grp_id)
-            await loop.run_in_executor(None, db.add_connect, grp_id, message.from_user.id) # Wrap sync
-            await message.reply(f'✅ ᴄᴏɴɴᴇᴄᴛᴇᴅ ᴛᴏ {chat.title}.')
+            try:
+                 if not await is_check_admin(client, grp_id, message.from_user.id): return await message.reply('ɴᴏᴛ ᴀᴅᴍɪɴ ɪɴ ᴛʜᴀᴛ ɢʀᴏᴜᴘ.')
+                 chat = await client.get_chat(grp_id)
+                 await loop.run_in_executor(None, db.add_connect, grp_id, message.from_user.id) # Wrap sync
+                 await message.reply(f'✅ ᴄᴏɴɴᴇᴄᴛᴇᴅ ᴛᴏ {chat.title}.')
+            except Exception as e:
+                 logger.error(f"Connect command error getting chat {grp_id}: {e}")
+                 await message.reply("Could not connect to that group ID.")
         else: await message.reply('Usage: /connect group_id')
 
 @Client.on_message(filters.command('delete') & filters.user(ADMINS))
@@ -305,14 +350,14 @@ async def img_2_link_cmd(bot, message): # Renamed function
     except Exception as e: logger.error(f"img_2_link upload err: {e}"); link = None
     finally: try: os.remove(path) except: pass
     if not link: return await txt.edit("Upload failed!")
-    await txt.edit(f"<b>❤️ ʟɪɴᴋ:\n`{link}`</b>");
+    await txt.edit(f"<b>❤️ ʟɪɴᴋ:\n`{link}`</b>", disable_web_page_preview=True);
 
 @Client.on_message(filters.command('ping') & filters.user(ADMINS))
 async def ping_cmd(client, message): # Renamed function
     start = monotonic(); msg = await message.reply("👀"); end = monotonic()
     await msg.edit(f'<b>ᴘᴏɴɢ!\n{round((end - start) * 1000)} ms</b>')
 
-@Client.on_message(filters.command(['cleanmultdb', 'cleandb']) & filters.user(ADMINS)) # Added alias
+@Client.on_message(filters.command(['cleanmultdb', 'cleandb']) & filters.user(ADMINS))
 async def clean_multi_db_duplicates(bot, message):
     # ** FIX: Check second_collection is not None **
     if not SECOND_FILES_DATABASE_URL or second_collection is None:
@@ -333,6 +378,7 @@ async def clean_multi_db_duplicates(bot, message):
 
         logger.info("Iterating secondary DB...")
         # ** FIX: Wrap find call **
+        # ** FIX: Call find on collection, not database **
         secondary_cursor = await loop.run_in_executor(None, partial(second_collection.find, {}, {'_id': 1}))
 
         BATCH_SIZE = 1000
@@ -340,13 +386,11 @@ async def clean_multi_db_duplicates(bot, message):
             for doc in secondary_cursor: yield doc
         doc_generator = await loop.run_in_executor(None, secondary_iterator)
 
-        ids_to_remove = []
-        last_update_time = time_now()
+        ids_to_remove = []; last_update_time = time_now()
 
         for doc in doc_generator:
             checked += 1
             if doc['_id'] in primary_ids: ids_to_remove.append(doc['_id'])
-
             if len(ids_to_remove) >= BATCH_SIZE:
                 try:
                     del_res = await loop.run_in_executor(None, partial(second_collection.delete_many, {'_id': {'$in': ids_to_remove}}))
@@ -354,10 +398,8 @@ async def clean_multi_db_duplicates(bot, message):
                     logger.info(f"Removed {deleted_now} duplicates (Batch).")
                 except Exception as del_e: logger.error(f"Error remove batch: {del_e}"); errors += len(ids_to_remove)
                 ids_to_remove = [] # Reset batch
-
-            # Update status less frequently
             current_time = time_now()
-            if current_time - last_update_time > 15: # Update every 15 secs
+            if current_time - last_update_time > 15:
                  elapsed = get_readable_time(current_time - start)
                  try: await sts_msg.edit_text(f"🧹 ᴄʟᴇᴀɴɪɴɢ...\n~ ᴄʜᴋ:<code>{checked}</code>|ʀᴍᴠ:<code>{removed}</code>|ᴇʀʀ:<code>{errors}</code>\n~ ᴇʟᴀᴘ:<code>{elapsed}</code>")
                  except FloodWait as e: await asyncio.sleep(e.value)
@@ -418,4 +460,3 @@ async def off_pm_search_cmd(bot, message): # Renamed
 async def on_pm_search_cmd(bot, message): # Renamed
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, db.update_bot_sttgs, 'PM_SEARCH', True); await message.reply('✅ PM Search ON.') # Wrap sync
-
