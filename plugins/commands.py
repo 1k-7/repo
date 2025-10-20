@@ -18,7 +18,7 @@ from info import (URL, BIN_CHANNEL, SECOND_FILES_DATABASE_URL, INDEX_CHANNELS, A
                   PM_FILE_DELETE_TIME, BOT_ID)
 from utils import (get_settings, get_size, is_subscribed, is_check_admin, get_shortlink,
                    get_verify_status, update_verify_status, save_group_settings, temp,
-                   get_readable_time, get_wish, get_seconds)
+                   get_readable_time, get_wish, get_seconds, upload_image)
 from database.ia_filterdb import collection as primary_collection, second_collection
 from hydrogram.errors import MessageNotModified, FloodWait
 import logging
@@ -215,11 +215,9 @@ async def channels_info_cmd(bot, message):
 async def stats_cmd(bot, message):
     loop = asyncio.get_running_loop()
     sts_msg = await message.reply("📊 ɢᴀᴛʜᴇʀɪɴɢ sᴛᴀᴛs...")
-
     async def get_stat_safe(func, *args):
         try: call_func = partial(func, *args) if args else func; return await loop.run_in_executor(None, call_func)
         except Exception as e: logger.error(f"Stat err {func.__name__}: {e}"); return "ᴇʀʀ"
-
     files = await get_stat_safe(db_count_documents)
     users = await get_stat_safe(db.total_users_count)
     chats = await get_stat_safe(db.total_chat_count)
@@ -227,24 +225,20 @@ async def stats_cmd(bot, message):
     used_data_db_size_raw = await get_stat_safe(db.get_data_db_size)
     used_files_db_size = get_size(used_files_db_size_raw) if isinstance(used_files_db_size_raw, (int, float)) else used_files_db_size_raw
     used_data_db_size = get_size(used_data_db_size_raw) if isinstance(used_data_db_size_raw, (int, float)) else used_data_db_size_raw
-
     secnd_files = '-'; secnd_files_db_used_size = '-'
-    # ** FIX: Check second_collection is not None **
     if SECOND_FILES_DATABASE_URL and second_collection is not None:
         secnd_files = await get_stat_safe(second_db_count_documents)
         secnd_files_db_used_size_raw = await get_stat_safe(db.get_second_files_db_size)
         secnd_files_db_used_size = get_size(secnd_files_db_used_size_raw) if isinstance(secnd_files_db_used_size_raw, (int, float)) else secnd_files_db_used_size_raw
-
     uptime = get_readable_time(time_now() - temp.START_TIME)
     total_f = 0
     if isinstance(files, int): total_f += files
     if isinstance(secnd_files, int): total_f += secnd_files
     total_files_str = str(total_f) if (isinstance(files, int) and (secnd_files == '-' or isinstance(secnd_files, int))) else "ᴇʀʀ"
-
     await sts_msg.edit(script.STATUS_TXT.format(users, chats, used_data_db_size, total_files_str, files, used_files_db_size, secnd_files, secnd_files_db_used_size, uptime))
 
 async def get_grp_stg(group_id):
-    settings = await get_settings(group_id) # Async wrapper
+    settings = await get_settings(group_id)
     btn = [[ InlineKeyboardButton('ɪᴍᴅʙ ᴛᴇᴍᴘʟᴀᴛᴇ', callback_data=f'imdb_setgs#{group_id}') ], [ InlineKeyboardButton('sʜᴏʀᴛʟɪɴᴋ', callback_data=f'shortlink_setgs#{group_id}') ], [ InlineKeyboardButton('ғɪʟᴇ ᴄᴀᴘᴛɪᴏɴ', callback_data=f'caption_setgs#{group_id}') ], [ InlineKeyboardButton('ᴡᴇʟᴄᴏᴍᴇ ᴍᴇssᴀɢᴇ', callback_data=f'welcome_setgs#{group_id}') ], [ InlineKeyboardButton('ᴛᴜᴛᴏʀɪᴀʟ ʟɪɴᴋ', callback_data=f'tutorial_setgs#{group_id}') ], [ InlineKeyboardButton(f'ᴘᴏsᴛᴇʀ {"✅" if settings.get("imdb", IMDB) else "❌"}', callback_data=f'bool_setgs#imdb#{settings.get("imdb", IMDB)}#{group_id}') ], [ InlineKeyboardButton(f'sᴘᴇʟʟ ᴄʜᴇᴄᴋ {"✅" if settings.get("spell_check", SPELL_CHECK) else "❌"}', callback_data=f'bool_setgs#spell_check#{settings.get("spell_check", SPELL_CHECK)}#{group_id}') ], [ InlineKeyboardButton(f'ᴀᴜᴛᴏ ᴅᴇʟᴇᴛᴇ {"✅" if settings.get("auto_delete", AUTO_DELETE) else "❌"}', callback_data=f'bool_setgs#auto_delete#{settings.get("auto_delete", AUTO_DELETE)}#{group_id}') ], [ InlineKeyboardButton(f'ᴡᴇʟᴄᴏᴍᴇ {"✅" if settings.get("welcome", WELCOME) else "❌"}', callback_data=f'bool_setgs#welcome#{settings.get("welcome", WELCOME)}#{group_id}') ], [ InlineKeyboardButton(f'sʜᴏʀᴛʟɪɴᴋ {"✅" if settings.get("shortlink", SHORTLINK) else "❌"}', callback_data=f'bool_setgs#shortlink#{settings.get("shortlink", SHORTLINK)}#{group_id}') ], [ InlineKeyboardButton(f'ʀᴇsᴜʟᴛ ᴘᴀɢᴇ {"ʟɪɴᴋ" if settings.get("links", LINK_MODE) else "ʙᴜᴛᴛᴏɴ"}', callback_data=f'bool_setgs#links#{settings.get("links", LINK_MODE)}#{group_id}') ]]
     return btn
 
@@ -257,7 +251,7 @@ async def settings_cmd(client, message):
         await message.reply('ᴏᴘᴇɴ sᴇᴛᴛɪɴɢs:', reply_markup=InlineKeyboardMarkup(btn))
     elif message.chat.type == enums.ChatType.PRIVATE:
         loop = asyncio.get_running_loop()
-        cons = await loop.run_in_executor(None, db.get_connections, message.from_user.id) # Wrap sync
+        cons = await loop.run_in_executor(None, db.get_connections, message.from_user.id)
         if not cons: return await message.reply("ɴᴏ ɢʀᴏᴜᴘs! /connect ɪɴ ɢʀᴏᴜᴘ.")
         buttons = []
         for con_id in cons:
@@ -270,7 +264,7 @@ async def connect_cmd(client, message):
     loop = asyncio.get_running_loop()
     if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
         if not await is_check_admin(client, message.chat.id, message.from_user.id): return await message.reply("ɴᴏᴛ ᴀᴅᴍɪɴ.")
-        await loop.run_in_executor(None, db.add_connect, message.chat.id, message.from_user.id) # Wrap sync
+        await loop.run_in_executor(None, db.add_connect, message.chat.id, message.from_user.id)
         await message.reply('✅ ᴄᴏɴɴᴇᴄᴛᴇᴅ ᴛᴏ ᴘᴍ.')
     elif message.chat.type == enums.ChatType.PRIVATE:
         if len(message.command) > 1:
@@ -279,7 +273,7 @@ async def connect_cmd(client, message):
             try:
                  if not await is_check_admin(client, grp_id, message.from_user.id): return await message.reply('ɴᴏᴛ ᴀᴅᴍɪɴ ɪɴ ᴛʜᴀᴛ ɢʀᴏᴜᴘ.')
                  chat = await client.get_chat(grp_id)
-                 await loop.run_in_executor(None, db.add_connect, grp_id, message.from_user.id) # Wrap sync
+                 await loop.run_in_executor(None, db.add_connect, grp_id, message.from_user.id)
                  await message.reply(f'✅ ᴄᴏɴɴᴇᴄᴛᴇᴅ ᴛᴏ {chat.title}.')
             except Exception as e: logger.error(f"Connect cmd error get chat {grp_id}: {e}"); await message.reply("Could not connect.")
         else: await message.reply('Usage: /connect group_id')
@@ -297,9 +291,18 @@ async def img_2_link_cmd(bot, message):
     if not r or not r.photo: return await message.reply('ʀᴇᴘʟʏ ᴛᴏ ᴘʜᴏᴛᴏ.')
     txt = await message.reply("⏳"); path = await r.download()
     loop = asyncio.get_running_loop()
-    try: link = await loop.run_in_executor(None, upload_image, path)
-    except Exception as e: logger.error(f"img_2_link upload err: {e}"); link = None
-    finally: try: os.remove(path) except: pass
+    link = None
+    try:
+        link = await loop.run_in_executor(None, upload_image, path)
+    except Exception as e:
+        logger.error(f"img_2_link upload err: {e}")
+    # ** CORRECTED SYNTAX **
+    finally:
+        try:
+            if path and os.path.exists(path):
+                os.remove(path)
+        except:
+            pass
     if not link: return await txt.edit("Upload failed!")
     await txt.edit(f"<b>❤️ ʟɪɴᴋ:\n`{link}`</b>", disable_web_page_preview=True);
 
@@ -310,7 +313,6 @@ async def ping_cmd(client, message):
 
 @Client.on_message(filters.command(['cleanmultdb', 'cleandb']) & filters.user(ADMINS))
 async def clean_multi_db_duplicates(bot, message):
-    # ** FIX: Check second_collection is not None **
     if not SECOND_FILES_DATABASE_URL or second_collection is None:
         return await message.reply("⚠️ sᴇᴄᴏɴᴅᴀʀʏ ᴅʙ ɴᴏᴛ ᴄᴏɴғɪɢᴜʀᴇᴅ.")
     sts_msg = await message.reply("🧹 sᴛᴀʀᴛɪɴɢ ᴄʟᴇᴀɴᴜᴘ...")
@@ -356,6 +358,52 @@ async def clean_multi_db_duplicates(bot, message):
         elapsed = get_readable_time(time_now() - start)
         await sts_msg.edit_text(f"✅ ᴄʟᴇᴀɴᴜᴘ ᴄᴏᴍᴘʟᴇᴛᴇ!\n\nᴛᴏᴏᴋ:<code>{elapsed}</code>\nᴄʜᴋ:<code>{checked}</code>|ʀᴍᴠ:<code>{removed}</code>|ᴇʀʀ:<code>{errors}</code>")
     except Exception as e: logger.error(f"/cleanmultdb error: {e}", exc_info=True); await sts_msg.edit(f"❌ ᴇʀʀᴏʀ: {e}")
+
+@Client.on_message(filters.command('dbequal') & filters.user(ADMINS))
+async def equalize_databases(bot, message):
+    if not SECOND_FILES_DATABASE_URL or second_collection is None:
+        return await message.reply("⚠️ sᴇᴄᴏɴᴅᴀʀʏ ᴅᴀᴛᴀʙᴀsᴇ ɪs ɴᴏᴛ ᴄᴏɴғɪɢᴜʀᴇᴅ.")
+    sts_msg = await message.reply("⚖️ ᴇǫᴜᴀʟɪᴢɪɴɢ ᴅᴀᴛᴀʙᴀsᴇs...\nᴛʜɪs ᴡɪʟʟ ᴛᴀᴋᴇ ᴀ ʟᴏɴɢ ᴛɪᴍᴇ.")
+    loop = asyncio.get_running_loop()
+    moved_count = 0; error_count = 0; start_time = time_now()
+    try:
+        total_db1 = await loop.run_in_executor(None, db_count_documents)
+        total_db2 = await loop.run_in_executor(None, second_db_count_documents)
+        if total_db1 == 0: return await sts_msg.edit("✅ ᴘʀɪᴍᴀʀʏ ᴅᴀᴛᴀʙᴀsᴇ ɪs ᴀʟʀᴇᴀᴅʏ ᴇᴍᴘᴛʏ.")
+        target_count_per_db = (total_db1 + total_db2) // 2
+        files_to_move_count = total_db1 - target_count_per_db
+        if files_to_move_count <= 0: return await sts_msg.edit(f"✅ ᴅʙs ᴀʟʀᴇᴀᴅʏ ʙᴀʟᴀɴᴄᴇᴅ.\n\nᴅʙ1: `{total_db1}`\nᴅʙ2: `{total_db2}`")
+        await sts_msg.edit(f"⚖️ sᴛᴀʀᴛɪɴɢ ᴍɪɢʀᴀᴛɪᴏɴ...\n\nᴅʙ1: `{total_db1}` | ᴅʙ2: `{total_db2}`\nᴛᴀʀɢᴇᴛ: `{target_count_per_db}`\n\nᴍᴏᴠɪɴɢ `{files_to_move_count}` ғɪʟᴇs ғʀᴏᴍ ᴅʙ1 ᴛᴏ ᴅʙ2.")
+        files_to_move_cursor = await loop.run_in_executor(None, lambda: primary_collection.find().limit(files_to_move_count))
+        BATCH_SIZE = 500; docs_batch = []; last_update_time = time_now()
+        for doc in files_to_move_cursor:
+            docs_batch.append(doc)
+            if len(docs_batch) >= BATCH_SIZE:
+                try:
+                    await loop.run_in_executor(None, partial(second_collection.insert_many, docs_batch, ordered=False))
+                    moved_count += len(docs_batch)
+                    ids_to_delete = [d['_id'] for d in docs_batch]
+                    await loop.run_in_executor(None, partial(primary_collection.delete_many, {'_id': {'$in': ids_to_delete}}))
+                    logger.info(f"Moved batch of {len(docs_batch)} files.")
+                except Exception as e: logger.error(f"Error moving batch: {e}"); error_count += len(docs_batch)
+                finally: docs_batch = []
+                current_time = time_now()
+                if current_time - last_update_time > 15:
+                    elapsed = get_readable_time(current_time - start_time)
+                    await sts_msg.edit(f"⚖️ ᴍɪɢʀᴀᴛɪɴɢ...\n\nᴍᴏᴠᴇᴅ: `{moved_count}` / `{files_to_move_count}`\nᴇʀʀᴏʀs: `{error_count}`\nᴇʟᴀᴘsᴇᴅ: `{elapsed}`")
+                    last_update_time = current_time
+        if docs_batch:
+            try:
+                await loop.run_in_executor(None, partial(second_collection.insert_many, docs_batch, ordered=False))
+                moved_count += len(docs_batch)
+                ids_to_delete = [d['_id'] for d in docs_batch]
+                await loop.run_in_executor(None, partial(primary_collection.delete_many, {'_id': {'$in': ids_to_delete}}))
+            except Exception as e: logger.error(f"Error moving final batch: {e}"); error_count += len(docs_batch)
+        elapsed = get_readable_time(time_now() - start_time)
+        final_total_db1 = await loop.run_in_executor(None, db_count_documents)
+        final_total_db2 = await loop.run_in_executor(None, second_db_count_documents)
+        await sts_msg.edit(f"✅ ᴍɪɢʀᴀᴛɪᴏɴ ᴄᴏᴍᴘʟᴇᴛᴇ!\n\nᴛᴏᴏᴋ: `{elapsed}`\nᴍᴏᴠᴇᴅ: `{moved_count}`\nᴇʀʀᴏʀs: `{error_count}`\n\nғɪɴᴀʟ ᴄᴏᴜɴᴛs:\nᴅʙ1: `{final_total_db1}`\nᴅʙ2: `{final_total_db2}`")
+    except Exception as e: logger.error(f"/dbequal error: {e}", exc_info=True); await sts_msg.edit(f"❌ ᴇʀʀᴏʀ: {e}")
 
 @Client.on_message(filters.command('set_fsub') & filters.user(ADMINS))
 async def set_fsub_cmd(bot, message):
