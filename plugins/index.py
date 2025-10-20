@@ -89,10 +89,12 @@ async def send_for_index(bot, message):
     elif response_msg.text and response_msg.text.startswith(("https://t.me/", "http://t.me/")):
         try:
             msg_link = response_msg.text.strip()
+            # Regex to handle public (username)/private (c/ID) links
             match = re.match(r"https?://t\.me/(?:c/)?(\w+)/(\d+)", msg_link)
             if match:
                  channel_part = match.group(1)
                  last_msg_id = int(match.group(2))
+                 # Try converting to int for private channels, keep as username for public
                  try: chat_id = int(f"-100{channel_part}")
                  except ValueError: chat_id = channel_part
                  logger.info(f"Received link: chat_id={chat_id}, last_msg_id={last_msg_id}")
@@ -165,8 +167,8 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, skip):
 
     # Ensure lock is acquired before proceeding
     if lock.locked():
-         logger.warning("index_files_to_db called while lock was already held.")
-         try: await msg.edit("⚠️ Indexing lock is already held.")
+         logger.warning("index_files_to_db called while lock was already held. This shouldn't happen.")
+         try: await msg.edit("⚠️ Indexing lock is already held. Please wait for the current process.")
          except: pass
          return
 
