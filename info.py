@@ -13,11 +13,12 @@ def is_enabled(type, value):
     elif data.lower() in ["false", "no", "0", "disable", "n"]:
         return False
     else:
-        logger.error(f'{type} is invalid, exiting now')
-        exit()
+        logger.warning(f'{type} is invalid, using default: {value}')
+        return value # Return the default value if invalid
 
 def is_valid_ip(ip):
-    ip_pattern = r'\b(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b'
+    # Basic IP pattern check
+    ip_pattern = r'\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b'
     return re.match(ip_pattern, ip) is not None
 
 # Bot information
@@ -36,8 +37,9 @@ if len(BOT_TOKEN) == 0:
     logger.error('BOT_TOKEN is missing, exiting now')
     exit()
 BOT_ID = BOT_TOKEN.split(":")[0]
-PORT = int(environ.get('PORT', '80'))
-PICS = (environ.get('PICS', 'https://files.catbox.moe/e0a7rw.png')).split()
+PORT = int(environ.get('PORT', '80')) # Default port for web server
+PICS = (environ.get('PICS', 'https://files.catbox.moe/e0a7rw.png')).split() # List of image URLs
+
 # Bot Admins
 ADMINS = environ.get('ADMINS', '6909365769 7683268664 6732237631 7269579203')
 if len(ADMINS) == 0:
@@ -56,7 +58,7 @@ if len(LOG_CHANNEL) == 0:
     exit()
 else:
     LOG_CHANNEL = int(LOG_CHANNEL)
-    
+
 # support group
 SUPPORT_GROUP = environ.get('SUPPORT_GROUP', '-1002708115180')
 if len(SUPPORT_GROUP) == 0:
@@ -76,9 +78,11 @@ if len(FILES_DATABASE_URL) == 0:
     exit()
 SECOND_FILES_DATABASE_URL = environ.get('SECOND_FILES_DATABASE_URL', "mongodb+srv://lordemperean:dpiU0sq9yGR5PjWc@cluster0.gvgbd5e.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
 if len(SECOND_FILES_DATABASE_URL) == 0:
-    logger.info('SECOND_FILES_DATABASE_URL is empty')
-DATABASE_NAME = environ.get('DATABASE_NAME', "Cluster0")
-COLLECTION_NAME = environ.get('COLLECTION_NAME', 'Files')
+    logger.info('SECOND_FILES_DATABASE_URL is empty') # Optional secondary DB
+DB_CHANGE_LIMIT = int(environ.get('DB_CHANGE_LIMIT', 450)) # Limit in MB for switching DBs
+
+DATABASE_NAME = environ.get('DATABASE_NAME', "Cluster0") # Shared DB name
+COLLECTION_NAME = environ.get('COLLECTION_NAME', 'Files') # Collection name for files
 
 # Links
 SUPPORT_LINK = environ.get('SUPPORT_LINK', 'https://t.me/norFedSupport')
@@ -88,66 +92,64 @@ TUTORIAL = environ.get("TUTORIAL", "https://t.me/norFederation")
 VERIFY_TUTORIAL = environ.get("VERIFY_TUTORIAL", "https://t.me/norFederation")
 
 # Bot settings
-TIME_ZONE = environ.get('TIME_ZONE', 'Asia/Colombo') 
-DELETE_TIME = int(environ.get('DELETE_TIME', 3600)) 
-CACHE_TIME = int(environ.get('CACHE_TIME', 300))
-MAX_BTN = int(environ.get('MAX_BTN', 8))
+TIME_ZONE = environ.get('TIME_ZONE', 'Asia/Kolkata') # Changed to IST
+DELETE_TIME = int(environ.get('DELETE_TIME', 3600)) # Auto-delete delay in seconds
+CACHE_TIME = int(environ.get('CACHE_TIME', 300)) # Inline cache time
+MAX_BTN = int(environ.get('MAX_BTN', 8)) # Max buttons per page
 LANGUAGES = [language.lower() for language in environ.get('LANGUAGES', 'hindi english telugu tamil kannada malayalam marathi punjabi').split()]
 QUALITY = [quality.lower() for quality in environ.get('QUALITY', '360p 480p 720p 1080p 2160p').split()]
-IMDB_TEMPLATE = environ.get("IMDB_TEMPLATE", script.IMDB_TEMPLATE)
-FILE_CAPTION = environ.get("FILE_CAPTION", script.FILE_CAPTION)
-SHORTLINK_URL = environ.get("SHORTLINK_URL", "mdiskshortner.link")
-SHORTLINK_API = environ.get("SHORTLINK_API", "36f1ae74ba1aa01e5bd73bdd0bc22aa915443501")
-VERIFY_EXPIRE = int(environ.get('VERIFY_EXPIRE', 86400)) # Add time in seconds
-WELCOME_TEXT = environ.get("WELCOME_TEXT", script.WELCOME_TEXT)
-INDEX_EXTENSIONS = [extensions.lower() for extensions in environ.get('INDEX_EXTENSIONS', 'mp4 mkv').split()]
-PM_FILE_DELETE_TIME = int(environ.get('PM_FILE_DELETE_TIME', '3600'))
+IMDB_TEMPLATE = environ.get("IMDB_TEMPLATE", script.IMDB_TEMPLATE) # Use default from Script.py
+FILE_CAPTION = environ.get("FILE_CAPTION", script.FILE_CAPTION) # Use default from Script.py
+SHORTLINK_URL = environ.get("SHORTLINK_URL", "") # Empty by default unless set
+SHORTLINK_API = environ.get("SHORTLINK_API", "") # Empty by default unless set
+VERIFY_EXPIRE = int(environ.get('VERIFY_EXPIRE', 86400)) # Verification validity in seconds
+WELCOME_TEXT = environ.get("WELCOME_TEXT", script.WELCOME_TEXT) # Use default from Script.py
+INDEX_EXTENSIONS = [ext.lower().strip().lstrip('.') for ext in environ.get('INDEX_EXTENSIONS', 'mkv mp4').split()] # Ensure no dots
+PM_FILE_DELETE_TIME = int(environ.get('PM_FILE_DELETE_TIME', '3600')) # Delete time for files sent to PM
 
-# boolean settings
-USE_CAPTION_FILTER = is_enabled('USE_CAPTION_FILTER', False)
-IS_VERIFY = is_enabled('IS_VERIFY', False)
-AUTO_DELETE = is_enabled('AUTO_DELETE', False)
-WELCOME = is_enabled('WELCOME', False)
-PROTECT_CONTENT = is_enabled('PROTECT_CONTENT', False)
-LONG_IMDB_DESCRIPTION = is_enabled("LONG_IMDB_DESCRIPTION", True)
-LINK_MODE = is_enabled("LINK_MODE", False)
-IMDB = is_enabled('IMDB', True)
-SPELL_CHECK = is_enabled("SPELL_CHECK", True)
-SHORTLINK = is_enabled('SHORTLINK', False)
+# Boolean settings (using is_enabled for clarity)
+USE_CAPTION_FILTER = is_enabled('USE_CAPTION_FILTER', False) # Search in captions too?
+IS_VERIFY = is_enabled('IS_VERIFY', False) # Enable user verification?
+AUTO_DELETE = is_enabled('AUTO_DELETE', False) # Auto-delete results message in group?
+WELCOME = is_enabled('WELCOME', False) # Send welcome message?
+PROTECT_CONTENT = is_enabled('PROTECT_CONTENT', False) # Prevent forwarding from PM?
+LONG_IMDB_DESCRIPTION = is_enabled("LONG_IMDB_DESCRIPTION", True) # Use full plot?
+LINK_MODE = is_enabled("LINK_MODE", False) # Show results as links instead of buttons?
+IMDB = is_enabled('IMDB', True) # Fetch IMDb data?
+SPELL_CHECK = is_enabled("SPELL_CHECK", True) # Enable spelling suggestions?
+SHORTLINK = is_enabled('SHORTLINK', False) # Use shortlinks for file access?
 
-# for stream
-IS_STREAM = is_enabled('IS_STREAM', False)
-BIN_CHANNEL = environ.get("BIN_CHANNEL", "-1002614750404")
-if len(BIN_CHANNEL) == 0:
-    logger.error('BIN_CHANNEL is missing, exiting now')
-    exit()
-else:
-    BIN_CHANNEL = int(BIN_CHANNEL)
-URL = environ.get("URL", "https://enthusiastic-livia-1k-7-bcdd6cbb.koyeb.app")
-if len(URL) == 0:
-    logger.error('URL is missing, exiting now')
-    exit()
-else:
+# for stream (if enabled)
+IS_STREAM = is_enabled('IS_STREAM', False) # Enable streaming?
+BIN_CHANNEL = environ.get("BIN_CHANNEL", "-1002614750404") # Channel for caching media for streaming
+if IS_STREAM:
+    if len(BIN_CHANNEL) == 0:
+        logger.error('BIN_CHANNEL is missing, required for streaming, exiting now')
+        exit()
+    else:
+        try:
+             BIN_CHANNEL = int(BIN_CHANNEL)
+        except ValueError:
+             logger.error('BIN_CHANNEL ID must be an integer, exiting now')
+             exit()
+
+URL = environ.get("URL", "") # Web server URL (Auto-detected for Heroku/Koyeb if not set)
+if IS_STREAM and len(URL) == 0:
+    logger.warning('URL is not set, streaming might not work unless auto-detected by platform.')
+elif len(URL) > 0:
     if URL.startswith(('https://', 'http://')):
         if not URL.endswith("/"):
             URL += '/'
     elif is_valid_ip(URL):
-        URL = f'http://{URL}/'
+        URL = f'http://{URL}/' # Assume http for IP by default
     else:
-        logger.error('URL is not valid, exiting now')
-        exit()
+        # Assume it's a platform app name if not IP or URL
+        # Platform detection in bot.py might override/confirm this
+        pass # Allow platform app names
 
-# for Premium 
-IS_PREMIUM = is_enabled('IS_PREMIUM', False)
-PRE_DAY_AMOUNT = int(environ.get('PRE_DAY_AMOUNT', '9')) # add amount in INR for premium charge pre day 
-UPI_ID = environ.get("UPI_ID", "yez@slc")
-if len(UPI_ID) == 0:
-    logger.info('UPI_ID is empty')
-UPI_NAME = environ.get("UPI_NAME", "noPremium") # add your UPI account name
-if len(UPI_NAME) == 0:
-    logger.info('UPI_NAME is empty')
-RECEIPT_SEND_USERNAME = environ.get("RECEIPT_SEND_USERNAME", "@Premium_option _currently_disabled")
-if len(UPI_ID) == 0 or len(UPI_NAME) == 0:
-    logger.info('IS_PREMIUM disabled due to empty UPI_ID or UPI_NAME')
-    IS_PREMIUM = False
-    
+# Premium system is disabled
+IS_PREMIUM = False
+# PRE_DAY_AMOUNT = int(environ.get('PRE_DAY_AMOUNT', '9'))
+# UPI_ID = environ.get("UPI_ID", "")
+# UPI_NAME = environ.get("UPI_NAME", "")
+# RECEIPT_SEND_USERNAME = environ.get("RECEIPT_SEND_USERNAME", "")
