@@ -10,8 +10,7 @@ logger.info("Starting Bot...")
 
 import os
 import time
-# Keep asyncio import if needed elsewhere, but let Hydrogram manage the loop run
-import asyncio
+import asyncio # Keep asyncio for potential use in Bot.start() etc.
 import threading
 import requests
 from hydrogram import types, Client, idle
@@ -19,14 +18,14 @@ from hydrogram.errors import FloodWait
 from aiohttp import web
 from typing import Union, Optional, AsyncGenerator
 from web import web_app # Defined in web/__init__.py
-from info import (LOG_CHANNEL, API_ID, API_HASH, BOT_TOKEN, PORT, ADMINS, URL) # Minimal necessary imports
+from info import (LOG_CHANNEL, API_ID, API_HASH, BOT_TOKEN, PORT, ADMINS, URL)
 from utils import temp, get_readable_time
 from database.users_chats_db import db
-# Import uvloop here but install it later
-import uvloop
+import uvloop # Import uvloop
 
 class Bot(Client):
     def __init__(self):
+        # Initialize Client first
         super().__init__(
             name='Auto_Filter_Bot',
             api_id=API_ID,
@@ -36,7 +35,7 @@ class Bot(Client):
             workers=8,
             sleep_threshold=10
         )
-        logger.info("Bot Client Initialized.") # Log after super().__init__
+        logger.info("Bot Client Initialized.")
 
     async def start(self):
         # This now runs within the loop created by app.run()
@@ -45,7 +44,7 @@ class Bot(Client):
             temp.START_TIME = time.time()
             logger.info("Hydrogram client started.")
 
-            # Fetch banned lists (run sync in executor as db calls are sync)
+            # Fetch banned lists (run sync in executor)
             try:
                  loop = asyncio.get_running_loop() # Get loop safely now
                  b_users, b_chats = await loop.run_in_executor(None, db.get_banned)
@@ -75,8 +74,6 @@ class Bot(Client):
             logger.info(f"Bot Info: ID={me.id}, Username=@{me.username}")
 
             # Start web server (Needs to run within the main loop)
-            # This should ideally be started by app.run() or managed carefully
-            # Let's keep the web server setup simple for now, called from start()
             try:
                 web_runner = web.AppRunner(web_app)
                 await web_runner.setup()
@@ -122,7 +119,6 @@ class Bot(Client):
                 current = message.id
 
 # --- Keepalive Ping Thread ---
-# This runs separately and doesn't need the main asyncio loop directly
 def ping_loop():
     ping_interval = 180 # 3 minutes
     logger.info("Keepalive ping thread initiated.")
@@ -138,17 +134,16 @@ def ping_loop():
         except requests.exceptions.Timeout: logger.error("Keepalive ping timed out ❌")
         except requests.exceptions.RequestException as e: logger.error(f"Keepalive ping exception: {e} ❌")
         except Exception as e: logger.error(f"Unexpected ping error: {e} ❌", exc_info=True)
-        finally: time.sleep(ping_interval) # Wait regardless of outcome
+        finally: time.sleep(ping_interval)
 
 # --- Start Bot ---
 if __name__ == "__main__":
     try:
-        # Install uvloop *before* creating the Client instance or running the loop
+        # Install uvloop policy *before* creating the Client instance
         uvloop.install()
         logger.info("uvloop installed.")
 
-        # Start the ping thread just before running the main app
-        # It's a daemon thread, so it won't block shutdown
+        # Start the ping thread (daemon ensures it exits when main thread does)
         threading.Thread(target=ping_loop, daemon=True, name="PingThread").start()
         logger.info("Keepalive ping thread started.")
 
@@ -156,19 +151,17 @@ if __name__ == "__main__":
         app = Bot()
         logger.info("Bot instance created. Starting run()...")
 
-        # Run the Hydrogram client. This creates and manages the asyncio event loop.
+        # Run the Hydrogram client. This creates/manages the asyncio event loop.
         app.run()
 
-    # Catch the specific RuntimeError we saw before for better logging
+    # Catch specific RuntimeError
     except RuntimeError as e:
          if "There is no current event loop" in str(e):
-              logger.critical(f"FATAL: {e}. Event loop error during startup. Check asyncio/uvloop setup.")
+              logger.critical(f"FATAL: {e}. Event loop error during startup.")
          else:
-              logger.critical(f"Bot startup failed with RuntimeError: {e}", exc_info=True)
+              logger.critical(f"Bot startup failed - RuntimeError: {e}", exc_info=True)
     except Exception as main_err:
-        logger.critical(f"Bot failed to start or crashed unexpectedly: {main_err}", exc_info=True)
+        logger.critical(f"Bot failed unexpectedly: {main_err}", exc_info=True)
     finally:
          logger.info("Bot process ended.")
-         # Optional: Add exit code for process managers
-         # import sys
-         # sys.exit(1) # Exit with error code if needed
+         # sys.exit(1) # Optional exit code
