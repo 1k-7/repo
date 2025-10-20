@@ -175,12 +175,14 @@ async def start(client, message):
             del_btns = [[ InlineKeyboardButton('🔄 ɢᴇᴛ ᴀɢᴀɪɴ', callback_data=f"get_del_file#{grp_id}#{file_id}") ]]
             try: await msg_timer.delete()
             except: pass
+            # **** CORRECTED SYNTAX ****
             if vp:
                 try:
                     await vp.delete()
                     logger.info(f"Auto-deleted file {file_id} user {user_id}")
                 except Exception as e:
                     logger.error(f"Error auto-deleting file {vp.id}: {e}")
+            # **** END CORRECTION ****
             try: await message.reply("❗️ ғɪʟᴇ ᴅᴇʟᴇᴛᴇᴅ.", reply_markup=InlineKeyboardMarkup(del_btns))
             except Exception as e: logger.warning(f"Could not send 'file gone' {user_id}: {e}"); return
         else: await message.reply("❓ ɪɴᴠᴀʟɪᴅ sᴛᴀʀᴛ.")
@@ -363,47 +365,76 @@ async def clean_multi_db_duplicates(bot, message):
 async def equalize_databases(bot, message):
     if not SECOND_FILES_DATABASE_URL or second_collection is None:
         return await message.reply("⚠️ sᴇᴄᴏɴᴅᴀʀʏ ᴅᴀᴛᴀʙᴀsᴇ ɪs ɴᴏᴛ ᴄᴏɴғɪɢᴜʀᴇᴅ.")
+    
     sts_msg = await message.reply("⚖️ ᴇǫᴜᴀʟɪᴢɪɴɢ ᴅᴀᴛᴀʙᴀsᴇs...\nᴛʜɪs ᴡɪʟʟ ᴛᴀᴋᴇ ᴀ ʟᴏɴɢ ᴛɪᴍᴇ.")
     loop = asyncio.get_running_loop()
     moved_count = 0; error_count = 0; start_time = time_now()
+
     try:
         total_db1 = await loop.run_in_executor(None, db_count_documents)
         total_db2 = await loop.run_in_executor(None, second_db_count_documents)
-        if total_db1 == 0: return await sts_msg.edit("✅ ᴘʀɪᴍᴀʀʏ ᴅᴀᴛᴀʙᴀsᴇ ɪs ᴀʟʀᴇᴀᴅʏ ᴇᴍᴘᴛʏ.")
+        
+        if total_db1 == 0:
+            return await sts_msg.edit("✅ ᴘʀɪᴍᴀʀʏ ᴅᴀᴛᴀʙᴀsᴇ ɪs ᴀʟʀᴇᴀᴅʏ ᴇᴍᴘᴛʏ.")
+            
         target_count_per_db = (total_db1 + total_db2) // 2
         files_to_move_count = total_db1 - target_count_per_db
-        if files_to_move_count <= 0: return await sts_msg.edit(f"✅ ᴅʙs ᴀʟʀᴇᴀᴅʏ ʙᴀʟᴀɴᴄᴇᴅ.\n\nᴅʙ1: `{total_db1}`\nᴅʙ2: `{total_db2}`")
-        await sts_msg.edit(f"⚖️ sᴛᴀʀᴛɪɴɢ ᴍɪɢʀᴀᴛɪᴏɴ...\n\nᴅʙ1: `{total_db1}` | ᴅʙ2: `{total_db2}`\nᴛᴀʀɢᴇᴛ: `{target_count_per_db}`\n\nᴍᴏᴠɪɴɢ `{files_to_move_count}` ғɪʟᴇs ғʀᴏᴍ ᴅʙ1 ᴛᴏ ᴅʙ2.")
+
+        if files_to_move_count <= 0:
+            return await sts_msg.edit(f"✅ ᴅᴀᴛᴀʙᴀsᴇs ᴀʀᴇ ᴀʟʀᴇᴀᴅʏ ʙᴀʟᴀɴᴄᴇᴅ ᴏʀ ᴅʙ1 ʜᴀs ғᴇᴡᴇʀ ғɪʟᴇs.\n\nᴅʙ1: `{total_db1}`\nᴅʙ2: `{total_db2}`")
+
+        await sts_msg.edit(f"⚖️ sᴛᴀʀᴛɪɴɢ ᴍɪɢʀᴀᴛɪᴏɴ...\n\nᴅʙ1 ᴄᴏᴜɴᴛ: `{total_db1}`\nᴅʙ2 ᴄᴏᴜɴᴛ: `{total_db2}`\nᴛᴀʀɢᴇᴛ ᴘᴇʀ ᴅʙ: `{target_count_per_db}`\n\nᴡɪʟʟ ᴀᴛᴛᴇᴍᴘᴛ ᴛᴏ ᴍᴏᴠᴇ `{files_to_move_count}` ғɪʟᴇs ғʀᴏᴍ ᴅʙ1 ᴛᴏ ᴅʙ2.")
+        
         files_to_move_cursor = await loop.run_in_executor(None, lambda: primary_collection.find().limit(files_to_move_count))
-        BATCH_SIZE = 500; docs_batch = []; last_update_time = time_now()
+        
+        BATCH_SIZE = 500
+        docs_batch = []
+        last_update_time = time_now()
+
         for doc in files_to_move_cursor:
             docs_batch.append(doc)
             if len(docs_batch) >= BATCH_SIZE:
                 try:
+                    # Insert batch into secondary DB
                     await loop.run_in_executor(None, partial(second_collection.insert_many, docs_batch, ordered=False))
                     moved_count += len(docs_batch)
+                    
+                    # Delete the same batch from primary DB
                     ids_to_delete = [d['_id'] for d in docs_batch]
                     await loop.run_in_executor(None, partial(primary_collection.delete_many, {'_id': {'$in': ids_to_delete}}))
+                    
                     logger.info(f"Moved batch of {len(docs_batch)} files.")
-                except Exception as e: logger.error(f"Error moving batch: {e}"); error_count += len(docs_batch)
-                finally: docs_batch = []
+                except Exception as e:
+                    logger.error(f"Error moving batch: {e}")
+                    error_count += len(docs_batch)
+                finally:
+                    docs_batch = [] # Reset batch
+
                 current_time = time_now()
                 if current_time - last_update_time > 15:
                     elapsed = get_readable_time(current_time - start_time)
                     await sts_msg.edit(f"⚖️ ᴍɪɢʀᴀᴛɪɴɢ...\n\nᴍᴏᴠᴇᴅ: `{moved_count}` / `{files_to_move_count}`\nᴇʀʀᴏʀs: `{error_count}`\nᴇʟᴀᴘsᴇᴅ: `{elapsed}`")
                     last_update_time = current_time
+
+        # Process the last partial batch
         if docs_batch:
             try:
                 await loop.run_in_executor(None, partial(second_collection.insert_many, docs_batch, ordered=False))
                 moved_count += len(docs_batch)
                 ids_to_delete = [d['_id'] for d in docs_batch]
                 await loop.run_in_executor(None, partial(primary_collection.delete_many, {'_id': {'$in': ids_to_delete}}))
-            except Exception as e: logger.error(f"Error moving final batch: {e}"); error_count += len(docs_batch)
+            except Exception as e:
+                logger.error(f"Error moving final batch: {e}")
+                error_count += len(docs_batch)
+
         elapsed = get_readable_time(time_now() - start_time)
         final_total_db1 = await loop.run_in_executor(None, db_count_documents)
         final_total_db2 = await loop.run_in_executor(None, second_db_count_documents)
         await sts_msg.edit(f"✅ ᴍɪɢʀᴀᴛɪᴏɴ ᴄᴏᴍᴘʟᴇᴛᴇ!\n\nᴛᴏᴏᴋ: `{elapsed}`\nᴍᴏᴠᴇᴅ: `{moved_count}`\nᴇʀʀᴏʀs: `{error_count}`\n\nғɪɴᴀʟ ᴄᴏᴜɴᴛs:\nᴅʙ1: `{final_total_db1}`\nᴅʙ2: `{final_total_db2}`")
-    except Exception as e: logger.error(f"/dbequal error: {e}", exc_info=True); await sts_msg.edit(f"❌ ᴇʀʀᴏʀ: {e}")
+
+    except Exception as e:
+        logger.error(f"/dbequal error: {e}", exc_info=True)
+        await sts_msg.edit(f"❌ ᴀɴ ᴇʀʀᴏʀ ᴏᴄᴄᴜʀʀᴇᴅ: {e}")
 
 @Client.on_message(filters.command('set_fsub') & filters.user(ADMINS))
 async def set_fsub_cmd(bot, message):
