@@ -8,226 +8,213 @@ from hydrogram.file_id import FileId
 from hydrogram import enums # Import enums for FileType check
 from pymongo import MongoClient, TEXT
 from pymongo.errors import DuplicateKeyError, OperationFailure
-# Import DB clients/collections defined in users_chats_db
-from database.users_chats_db import (
-    files_db_client as client, files_db as db, files_db as collection, # Use primary by default
-    second_files_db_client, second_files_db, second_files_db as second_collection # Use secondary if available
-)
-from info import USE_CAPTION_FILTER, SECOND_FILES_DATABASE_URL, MAX_BTN, DB_CHANGE_LIMIT
+# --- CORRECTED IMPORTS ---
+from database.users_chats_db import files_db_client as client, files_db as db # Keep client and db objects
+from database.users_chats_db import second_files_db_client, second_files_db # Keep secondary client/db
+from info import (COLLECTION_NAME, USE_CAPTION_FILTER, SECOND_FILES_DATABASE_URL,
+                  MAX_BTN, DB_CHANGE_LIMIT) # Import necessary info vars
+# --- CORRECTLY GET COLLECTIONS ---
+collection = db.get_collection(COLLECTION_NAME) if db else None
+second_collection = second_files_db.get_collection(COLLECTION_NAME) if second_files_db else None
+# --- END CORRECTIONS ---
 from utils import get_size
 
 logger = logging.getLogger(__name__)
 
-# Note: Indexes should have been created on startup by users_chats_db.py
+# Ensure indexes (Optional - better managed externally)
+# try:
+#     if collection: collection.create_index([("file_name", TEXT), ("caption", TEXT)], background=True, name="search_index") # Add caption
+#     if second_collection: second_collection.create_index([("file_name", TEXT), ("caption", TEXT)], background=True, name="search_index_secondary")
+#     logger.info("Ensured text indexes on file_name and caption.")
+# except Exception as e:
+#     logger.warning(f"Could not ensure text indexes: {e}")
+
 
 # --- DB Count Functions (Synchronous) ---
 def db_count_documents():
-     if collection is None: return 0
+     # ** FIX: Check collection is not None **
+     if collection is None: logger.error("Primary collection not available for count."); return 0
      try: return collection.count_documents({})
      except Exception as e: logger.error(f"Error counting primary DB: {e}"); return 0
 
 def second_db_count_documents():
-     if second_collection is None: return 0
+     # ** FIX: Check second_collection is not None **
+     if second_collection is None: return 0 # Return 0 if no secondary collection
      try: return second_collection.count_documents({})
      except Exception as e: logger.error(f"Error counting secondary DB: {e}"); return 0
 
-# --- Async Save File ---
+
+# --- Async Save File with Cross-DB Check ---
 async def save_file(media):
-    """Save file in database with size check and cross-DB duplicate check"""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
+    # ** FIX: Check collection **
     if collection is None: logger.error("Primary DB unavailable."); return 'err'
 
     file_id = unpack_new_file_id(media.file_id)
-    if not file_id: return 'err' # unpack failed
+    if not file_id: return 'err'
 
-    raw_file_name = str(media.file_name) if media.file_name else "UnknownFile"
-    file_name = re.sub(r"@\w+|(_|\-|\.|\+)", " ", raw_file_name)
-    file_name = re.sub(r'\s+', ' ', file_name).strip()
+    raw_fn = str(media.file_name) if media.file_name else "UnknownFile"; fn = re.sub(r"[@\(\)\[\]]", "", raw_fn); fn = re.sub(r"(_|\-|\.|\+)+", " ", fn); fn = re.sub(r'\s+', ' ', fn).strip()
+    cap_txt = str(media.caption) if media.caption is not None else ""; fc = re.sub(r"@\w+|(_|\-|\.|\+)|https?://\S+", " ", cap_txt); fc = re.sub(r'\s+', ' ', fc).strip()
+    doc = { '_id': file_id, 'file_name': fn, 'file_size': media.file_size or 0, 'caption': fc }
 
-    caption_text = str(media.caption) if media.caption is not None else ""
-    # Further sanitize caption if needed (e.g., remove links)
-    file_caption = re.sub(r"@\w+|(_|\-|\.|\+)|https?://\S+", " ", caption_text) # Example: remove links too
-    file_caption = re.sub(r'\s+', ' ', file_caption).strip()
+    try: # Cross-DB Check
+        ex_p = await loop.run_in_executor(None, partial(collection.find_one, {'_id': file_id}, {'_id': 1}))
+        if ex_p: logger.warning(f'[Dup] Primary: {fn}'); return 'dup'
+        # ** FIX: Check second_collection is not None **
+        if second_collection is not None:
+             ex_s = await loop.run_in_executor(None, partial(second_collection.find_one, {'_id': file_id}, {'_id': 1}))
+             if ex_s: logger.warning(f'[Dup] Secondary: {fn}'); return 'dup'
+    except Exception as e_chk: logger.error(f"Dup check error: {e_chk}. Proceeding...")
 
-    document = {
-        '_id': file_id, 'file_name': file_name,
-        'file_size': media.file_size if media.file_size else 0, 'caption': file_caption
-    }
+    use_s_db = False; db_use = collection; log_db = "primary"
+    # ** FIX: Check second_collection is not None **
+    if second_collection is not None:
+        try: # Size Check
+            p_stats = await loop.run_in_executor(None, client.admin.command, 'dbstats')
+            p_size = p_stats.get('dataSize', 0); limit_b = DB_CHANGE_LIMIT * 1024 * 1024
+            if p_size >= limit_b: use_s_db = True; db_use = second_collection; log_db = "secondary"; logger.info(f"Primary DB ({get_size(p_size)}) >= Limit. Using {log_db}.")
+        except Exception as e_size: logger.error(f"Size check error: {e_size}. Defaulting primary.")
 
-    # --- Cross-DB Duplicate Check ---
-    try:
-        exists_in_primary = await loop.run_in_executor(None, partial(collection.find_one, {'_id': file_id}, {'_id': 1})) # Only fetch ID
-        if exists_in_primary: logger.warning(f'[Dup Check] Primary: {file_name}'); return 'dup'
-        if second_collection:
-             exists_in_secondary = await loop.run_in_executor(None, partial(second_collection.find_one, {'_id': file_id}, {'_id': 1}))
-             if exists_in_secondary: logger.warning(f'[Dup Check] Secondary: {file_name}'); return 'dup'
-    except Exception as check_e: logger.error(f"Dup check error: {check_e}. Proceeding...")
-
-    # --- Select DB based on size ---
-    use_second_db = False; db_to_use = collection; db_name_log = "primary"
-    if second_collection:
-        try:
-            primary_db_stats = await loop.run_in_executor(None, client.admin.command, 'dbstats')
-            primary_db_size = primary_db_stats.get('dataSize', 0)
-            db_change_limit_bytes = DB_CHANGE_LIMIT * 1024 * 1024
-            if primary_db_size >= db_change_limit_bytes:
-                 use_second_db = True; db_to_use = second_collection; db_name_log = "secondary"
-                 logger.info(f"Primary DB size {get_size(primary_db_size)} >= {DB_CHANGE_LIMIT}MB. Using {db_name_log} DB.")
-        except Exception as e: logger.error(f"Size check error: {e}. Defaulting to primary.")
-
-    # --- Attempt insert ---
-    try:
-        await loop.run_in_executor(None, partial(db_to_use.insert_one, document))
-        logger.info(f'Saved to {db_name_log} db - {file_name}')
+    try: # Insert
+        await loop.run_in_executor(None, partial(db_use.insert_one, doc))
+        logger.info(f'Saved [{get_size(doc["file_size"])}] to {log_db}: {fn}')
         return 'suc'
-    except DuplicateKeyError: logger.warning(f'Already Saved (DupKey on {db_name_log}) - {file_name}'); return 'dup'
-    except OperationFailure as e:
-         logger.error(f"Mongo OpFail on {db_name_log}: {e}")
-         if db_name_log == "primary" and second_collection:
-             logger.warning("OpFail on primary, trying secondary...")
-             try: # Existence already checked, try insert
-                 await loop.run_in_executor(None, partial(second_collection.insert_one, document))
-                 logger.info(f'Saved to secondary after primary failure - {file_name}')
-                 return 'suc'
-             except DuplicateKeyError: logger.warning(f'Already Saved in secondary (OpFail Dupkey): {file_name}'); return 'dup'
-             except Exception as e2: logger.error(f"Failed save to secondary after OpFail: {e2}"); return 'err'
-         else: return 'err' # No fallback or secondary failed too
-    except Exception as e: logger.error(f"Unexpected save error ({db_name_log}): {e}", exc_info=True); return 'err'
+    except DuplicateKeyError: logger.warning(f'DupKey {log_db}: {fn}'); return 'dup'
+    except OperationFailure as e_op:
+         logger.error(f"Mongo OpFail {log_db}: {e_op}")
+         # ** FIX: Check second_collection is not None **
+         if log_db == "primary" and second_collection is not None:
+             logger.warning("OpFail primary, trying secondary...")
+             try: await loop.run_in_executor(None, partial(second_collection.insert_one, doc)); logger.info(f'Saved secondary after OpFail: {fn}'); return 'suc'
+             except DuplicateKeyError: logger.warning(f'Already secondary (OpFail Dupkey): {fn}'); return 'dup'
+             except Exception as e2: logger.error(f"Failed save secondary after OpFail: {e2}"); return 'err'
+         else: return 'err'
+    except Exception as e_ins: logger.error(f"Save error ({log_db}): {e_ins}", exc_info=True); return 'err'
 
 
 # --- Async Get Search Results ---
 async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None):
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     query = str(query).strip()
-    if not query: return [], '', 0 # Return empty if query is empty
+    if not query: return [], '', 0
 
-    # --- Compile Regex ---
-    if ' ' not in query: raw_pattern = r'(\b|[\.\+\-_])' + re.escape(query) + r'(\b|[\.\+\-_])'
-    else: raw_pattern = query.replace(' ', r'.*[\s\.\+\-_]') # Basic space handling
+    words = [re.escape(word) for word in query.split()]
+    raw_pattern = r'\b' + r'.*?\b'.join(words) + r'.*' # Match words in order
     try: regex = re.compile(raw_pattern, flags=re.IGNORECASE)
-    except re.error as e: logger.error(f"Regex error: {e}, using plain text for: {query}"); regex = query
+    except re.error as e: logger.error(f"Regex error: {e}, using plain text: {query}"); regex = query
 
-    # --- Define Filter ---
-    # Using regex for broader matching, consider text index for performance on large DBs
     filter_query = {'file_name': regex}
     if USE_CAPTION_FILTER: filter_query = {'$or': [{'file_name': regex}, {'caption': regex}]}
+    # Text search fallback (requires index):
+    # if not isinstance(regex, re.Pattern): filter_query = {'$text': {'$search': query}}
 
-    # --- Query Execution ---
-    results = []
-    total_results = 0
+    results = []; total_results = 0
 
-    async def run_find_and_count(db_collection, query_filter):
-         if db_collection is None: return [], 0
-         try:
-              # Count first for total
-              count = await loop.run_in_executor(None, partial(db_collection.count_documents, query_filter))
-              # Find documents with skip and limit
-              cursor = db_collection.find(query_filter).skip(offset).limit(max_results) # Apply offset/limit in DB query
-              docs = await loop.run_in_executor(None, list, cursor)
-              return docs, count
-         except Exception as e: logger.error(f"Error querying {db_collection.name}: {e}"); return [], 0
+    async def run_find_and_count(db_collection, query_filter, skip, limit):
+        # ** FIX: Check db_collection is not None **
+        if db_collection is None: return [], 0
+        try:
+            count = await loop.run_in_executor(None, partial(db_collection.count_documents, query_filter))
+            cursor = db_collection.find(query_filter).skip(skip).limit(limit) # Add sort if needed
+            docs = await loop.run_in_executor(None, list, cursor)
+            return docs, count
+        except Exception as e: logger.error(f"Error querying {db_collection.name}: {e}"); return [], 0
 
-    # Query primary DB
-    primary_docs, primary_count = await run_find_and_count(collection, filter_query)
-    results.extend(primary_docs)
-    total_results += primary_count
+    # Query primary
+    primary_docs, primary_count = await run_find_and_count(collection, filter_query, offset, max_results)
+    results.extend(primary_docs); total_results += primary_count
+    logger.debug(f"Primary search: Found {len(primary_docs)}, Total {primary_count}")
 
-    # Query secondary DB if exists
-    if second_collection:
-        # Adjust offset/limit for secondary based on primary results?
-        # For simplicity now, we fetch max_results from both and combine/slice later
-        # A more efficient approach would adjust the secondary query based on primary results count.
-        secondary_docs, secondary_count = await run_find_and_count(second_collection, filter_query)
-        results.extend(secondary_docs)
-        total_results += secondary_count # Note: This simple addition might overestimate if counts overlap heavily with regex; fine for estimations
+    # Query secondary if needed
+    remaining_limit = max_results - len(primary_docs)
+    # ** FIX: Check second_collection is not None **
+    if second_collection is not None and remaining_limit > 0:
+        # Simple pagination offset adjustment across DBs (might not be perfect)
+        secondary_offset = max(0, offset - primary_count) if offset >= primary_count else 0
+        secondary_docs, secondary_count = await run_find_and_count(second_collection, filter_query, secondary_offset, remaining_limit)
+        results.extend(secondary_docs); total_results += secondary_count
+        logger.debug(f"Secondary search: Found {len(secondary_docs)}, Total {secondary_count}")
 
-    # --- Filter by Language (if applicable, Post-Fetch) ---
+    # Post-Fetch Language Filter
     if lang:
         lang = lang.lower()
-        lang_files = [file for file in results if lang in file.get('file_name', '').lower()]
-        files_to_return = lang_files[:max_results] # Slice after combining and filtering
-        current_total = len(lang_files) # Total relevant to language filter
+        lang_files = [f for f in results if lang in f.get('file_name', '').lower() or lang in f.get('caption', '').lower()]
+        current_total = len(lang_files)
+        # Re-apply offset/limit after filtering (inefficient but simpler)
+        files_to_return = lang_files[offset : offset + max_results]
     else:
-        # Slice combined results if no language filter
-        # Note: Results aren't explicitly sorted across DBs here.
+        # Slice combined results to max_results (already partially limited by DB queries)
         files_to_return = results[:max_results]
-        current_total = total_results # Use estimated total
+        current_total = total_results # Estimated total
 
-    # --- Calculate Next Offset ---
-    # This pagination isn't perfect across two unsorted result sets, but provides basic functionality.
-    # True pagination needs DB-level sorting and skipping across both sources or a unified view.
-    next_offset = offset + len(files_to_return) # Simplified next offset based on returned count
-    if next_offset >= current_total or len(files_to_return) < max_results: # Check if we reached the end
-        next_offset = ''
+    # Calculate Next Offset
+    next_offset_val = offset + len(files_to_return)
+    has_more = next_offset_val < current_total
+    next_offset = str(next_offset_val) if has_more else ''
 
-    logger.debug(f"Query '{query}'|Lang '{lang}'|Offset {offset}|Limit {max_results}|Found {len(files_to_return)}|Total ~{current_total}|Next '{next_offset}'")
+    logger.debug(f"Q:'{query}'|L:'{lang}'|Off:{offset}|Lim:{max_results}|Ret:{len(files_to_return)}|Tot:~{current_total}|Next:'{next_offset}'")
     return files_to_return, next_offset, current_total
 
 
 # --- Async Delete Files ---
 async def delete_files(query):
-    loop = asyncio.get_event_loop()
-    query = str(query).strip(); total_deleted = 0
+    loop = asyncio.get_running_loop(); total_deleted = 0
+    query = str(query).strip();
     if not query: return 0
 
-    if ' ' not in query: raw_pattern = r'(\b|[\.\+\-_])' + re.escape(query) + r'(\b|[\.\+\-_])'
-    else: raw_pattern = query.replace(' ', r'.*[\s\.\+\-_]')
+    words = [re.escape(word) for word in query.split()]; raw_pattern = r'\b' + r'.*?\b'.join(words) + r'.*'
     try: regex = re.compile(raw_pattern, flags=re.IGNORECASE)
-    except re.error: regex = query # Fallback
-
-    filter_query = {'file_name': regex} if isinstance(regex, re.Pattern) else {'$text': {'$search': query}}
+    except re.error: regex = query
+    filter_query = {'file_name': regex} # Match filename only for delete
+    # filter_query = {'$or': [{'file_name': regex}, {'caption': regex}]} # Optionally include caption
 
     async def run_delete(db_collection, query_filter):
+        # ** FIX: Check db_collection **
         if db_collection is None: return 0
         try: result = await loop.run_in_executor(None, partial(db_collection.delete_many, query_filter)); return result.deleted_count
-        except Exception as e: logger.error(f"Error deleting from {db_collection.name}: {e}"); return 0
+        except Exception as e: logger.error(f"Error deleting {db_collection.name}: {e}"); return 0
 
     deleted1 = await run_delete(collection, filter_query); total_deleted += deleted1
-    if second_collection: deleted2 = await run_delete(second_collection, filter_query); total_deleted += deleted2
+    # ** FIX: Check second_collection **
+    if second_collection is not None: deleted2 = await run_delete(second_collection, filter_query); total_deleted += deleted2
 
-    logger.info(f"Deleted {total_deleted} files matching query: '{query}'")
+    logger.info(f"Deleted {total_deleted} files matching: '{query}'")
     return total_deleted
 
 
 # --- Async Get File Details ---
 async def get_file_details(query_id):
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     file_details = None
-    if collection:
+    # ** FIX: Check collection **
+    if collection is not None:
          try: file_details = await loop.run_in_executor(None, partial(collection.find_one, {'_id': query_id}))
          except Exception as e: logger.error(f"Error find_one primary {query_id}: {e}")
-    if not file_details and second_collection:
+    # ** FIX: Check second_collection **
+    if not file_details and second_collection is not None:
          try: file_details = await loop.run_in_executor(None, partial(second_collection.find_one, {'_id': query_id}))
          except Exception as e: logger.error(f"Error find_one secondary {query_id}: {e}")
-    return file_details
+    # Return list to match previous expectation
+    return [file_details] if file_details else []
 
 
 # --- File ID Packing/Unpacking ---
 def encode_file_id(s: bytes) -> str:
-    # Encodes v2 packed bytes to string ID
-    r = b""; n = 0
-    for i in s + bytes([22]) + bytes([4]):
-        if i == 0: n += 1
+    r=b""; n=0
+    for i in s+bytes([22])+bytes([4]):
+        if i==0: n+=1
         else:
-            if n: r += b"\x00" + bytes([n]); n = 0
-            r += bytes([i])
-    if n: r += b"\x00" + bytes([n])
+            if n: r+=b"\x00"+bytes([n]); n=0
+            r+=bytes([i])
+    if n: r+=b"\x00"+bytes([n])
     return base64.urlsafe_b64encode(r).decode().rstrip("=")
 
 def unpack_new_file_id(new_file_id):
-    """Unpacks v2/v3 file_id, returns packed v2 file_id string for db"""
     try:
         decoded = FileId.decode(new_file_id)
-        # Map Hydrogram FileType enum to integer representation expected by pack
-        # These integers might correspond to older TG layer types, adjust if necessary
-        file_type_int = 0 # Default (Photo)
-        if decoded.file_type == enums.FileType.DOCUMENT: file_type_int = 2
-        elif decoded.file_type == enums.FileType.VIDEO: file_type_int = 3
-        elif decoded.file_type == enums.FileType.AUDIO: file_type_int = 1
-        # Add mappings for other types like VOICE, STICKER, ANIMATION if needed
+        type_map = { enums.FileType.PHOTO: 0, enums.FileType.AUDIO: 1, enums.FileType.DOCUMENT: 2, enums.FileType.VIDEO: 3, enums.FileType.STICKER: 4, enums.FileType.VOICE: 5, enums.FileType.ANIMATION: 6, enums.FileType.VIDEO_NOTE: 7 }
+        ftype = type_map.get(decoded.file_type, 2) # Default Document
+        packed = pack("<iiqq", ftype, decoded.dc_id, decoded.media_id, decoded.access_hash)
+        return encode_file_id(packed)
+    except Exception as e: logger.error(f"Unpack file_id error {new_file_id}: {e}", exc_info=True); return None
 
-        packed_v2 = pack( "<iiqq", file_type_int, decoded.dc_id, decoded.media_id, decoded.access_hash )
-        return encode_file_id(packed_v2)
-    except Exception as e:
-        logger.error(f"Error unpacking file_id {new_file_id}: {e}", exc_info=True)
-        return None # Return None on failure
