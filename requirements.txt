@@ -1,16 +1,11 @@
 hydrogram
 tgcrypto
-pymongo
+pymongo[srv]
 cinemagoer
 shortzy
 aiohttp
 aiofiles
 speedtest-cli
-uvloop
 requests
-qrcode
-Pillow
 pytz
-motor
-umongo
 dnspython
