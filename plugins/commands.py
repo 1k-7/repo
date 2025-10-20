@@ -175,14 +175,12 @@ async def start(client, message):
             del_btns = [[ InlineKeyboardButton('🔄 ɢᴇᴛ ᴀɢᴀɪɴ', callback_data=f"get_del_file#{grp_id}#{file_id}") ]]
             try: await msg_timer.delete()
             except: pass
-            # **** CORRECTED SYNTAX ****
             if vp:
                 try:
                     await vp.delete()
                     logger.info(f"Auto-deleted file {file_id} user {user_id}")
                 except Exception as e:
                     logger.error(f"Error auto-deleting file {vp.id}: {e}")
-            # **** END CORRECTION ****
             try: await message.reply("❗️ ғɪʟᴇ ᴅᴇʟᴇᴛᴇᴅ.", reply_markup=InlineKeyboardMarkup(del_btns))
             except Exception as e: logger.warning(f"Could not send 'file gone' {user_id}: {e}"); return
         else: await message.reply("❓ ɪɴᴠᴀʟɪᴅ sᴛᴀʀᴛ.")
@@ -395,20 +393,16 @@ async def equalize_databases(bot, message):
             docs_batch.append(doc)
             if len(docs_batch) >= BATCH_SIZE:
                 try:
-                    # Insert batch into secondary DB
                     await loop.run_in_executor(None, partial(second_collection.insert_many, docs_batch, ordered=False))
                     moved_count += len(docs_batch)
-                    
-                    # Delete the same batch from primary DB
                     ids_to_delete = [d['_id'] for d in docs_batch]
                     await loop.run_in_executor(None, partial(primary_collection.delete_many, {'_id': {'$in': ids_to_delete}}))
-                    
                     logger.info(f"Moved batch of {len(docs_batch)} files.")
                 except Exception as e:
                     logger.error(f"Error moving batch: {e}")
                     error_count += len(docs_batch)
                 finally:
-                    docs_batch = [] # Reset batch
+                    docs_batch = []
 
                 current_time = time_now()
                 if current_time - last_update_time > 15:
@@ -416,7 +410,6 @@ async def equalize_databases(bot, message):
                     await sts_msg.edit(f"⚖️ ᴍɪɢʀᴀᴛɪɴɢ...\n\nᴍᴏᴠᴇᴅ: `{moved_count}` / `{files_to_move_count}`\nᴇʀʀᴏʀs: `{error_count}`\nᴇʟᴀᴘsᴇᴅ: `{elapsed}`")
                     last_update_time = current_time
 
-        # Process the last partial batch
         if docs_batch:
             try:
                 await loop.run_in_executor(None, partial(second_collection.insert_many, docs_batch, ordered=False))
