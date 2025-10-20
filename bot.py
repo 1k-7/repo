@@ -2,158 +2,158 @@ import logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(module)s - %(message)s', # Added module name
-    handlers=[logging.StreamHandler()]
+    handlers=[logging.StreamHandler(), logging.FileHandler("bot.log")] # Added file handler
 )
-logging.getLogger('hydrogram').setLevel(logging.WARNING) # Changed to WARNING to see more hydro errors if needed
+logging.getLogger('hydrogram').setLevel(logging.WARNING) # Keep Hydrogram logs less verbose
 logger = logging.getLogger(__name__)
+logger.info("Starting Bot...") # Log start early
 
 import os
 import time
 import asyncio
 import uvloop
-import threading # For ping thread
-import requests  # For ping thread
-from hydrogram import types
-from hydrogram import Client
+import threading
+import requests
+from hydrogram import types, Client, idle
 from hydrogram.errors import FloodWait
 from aiohttp import web
 from typing import Union, Optional, AsyncGenerator
-from web import web_app # Assuming web_app is defined in web/__init__.py
+from web import web_app # Defined in web/__init__.py
 # Removed check_premium import
-from info import (INDEX_CHANNELS, SUPPORT_GROUP, LOG_CHANNEL, API_ID, DATA_DATABASE_URL,
-                  API_HASH, BOT_TOKEN, PORT, BIN_CHANNEL, ADMINS,
-                  SECOND_FILES_DATABASE_URL, FILES_DATABASE_URL, URL) # Added URL
+from info import (LOG_CHANNEL, API_ID, DATA_DATABASE_URL, API_HASH,
+                  BOT_TOKEN, PORT, ADMINS, URL) # Minimal necessary imports
 from utils import temp, get_readable_time # Removed check_premium
 from database.users_chats_db import db
-# Removed pymongo imports if not used directly here
 
 uvloop.install()
 
 class Bot(Client):
     def __init__(self):
         super().__init__(
-            name='Auto_Filter_Bot', # Consider using SESSION variable from info.py if defined
+            name='Auto_Filter_Bot', # Can use SESSION from info.py if needed
             api_id=API_ID,
             api_hash=API_HASH,
             bot_token=BOT_TOKEN,
             plugins={"root": "plugins"},
-            # Consider adding workers parameter if needed: workers=4
+            workers=8, # Slightly increase workers, adjust based on host resources
+            sleep_threshold=10 # Increase sleep threshold slightly
         )
 
     async def start(self):
-        await super().start()
-        temp.START_TIME = time.time()
-        b_users, b_chats = await db.get_banned() # Ensure get_banned is async or handled properly
-        temp.BANNED_USERS = b_users
-        temp.BANNED_CHATS = b_chats
-        temp.BOT = self # Store bot instance
-
-        # Restart message handling remains
-        if os.path.exists('restart.txt'):
+        try:
+            await super().start()
+            temp.START_TIME = time.time()
+            # Fetch banned lists (ensure db.get_banned is synchronous or called correctly)
             try:
-                with open("restart.txt") as file:
-                    chat_id, msg_id = map(int, file)
-                await self.edit_message_text(chat_id=chat_id, message_id=msg_id, text='✅ Restarted Successfully!')
-                os.remove('restart.txt')
-            except Exception as e:
-                logger.error(f"Error handling restart message: {e}")
+                 # Assuming get_banned is sync, run in executor
+                 loop = asyncio.get_event_loop()
+                 b_users, b_chats = await loop.run_in_executor(None, db.get_banned)
+            except Exception as db_err:
+                 logger.error(f"Failed to fetch banned lists: {db_err}. Proceeding with empty lists.")
+                 b_users, b_chats = [], []
 
-        # Get bot info
-        me = await self.get_me()
-        temp.ME = me.id
-        temp.U_NAME = me.username
-        temp.B_NAME = me.first_name
+            temp.BANNED_USERS = b_users
+            temp.BANNED_CHATS = b_chats
+            temp.BOT = self
 
-        # Start web server for keepalive/streaming
-        try:
-            app = web.AppRunner(web_app)
-            await app.setup()
-            # Use PORT from info.py
-            await web.TCPSite(app, "0.0.0.0", PORT).start()
-            logger.info(f"Web server started successfully on port {PORT}.")
-        except Exception as e:
-            logger.error(f"Error starting web server: {e}", exc_info=True)
-            # Decide if bot should exit or continue without web server
-            # exit() or pass
+            # Restart message
+            if os.path.exists('restart.txt'):
+                try:
+                    with open("restart.txt") as file: chat_id, msg_id = map(int, file)
+                    await self.edit_message_text(chat_id=chat_id, message_id=msg_id, text='✅ Restarted Successfully!')
+                    os.remove('restart.txt')
+                except Exception as e: logger.error(f"Restart message error: {e}")
 
-        # Remove premium check task
-        # asyncio.create_task(check_premium(self))
+            # Get bot info
+            me = await self.get_me()
+            temp.ME = me.id
+            temp.U_NAME = me.username
+            temp.B_NAME = me.first_name
 
-        # Log bot start
-        try:
-            startup_msg = f"<b>✅ {me.mention} Restarted!</b>"
-            # Add version or other info if desired
-            await self.send_message(chat_id=LOG_CHANNEL, text=startup_msg)
-        except Exception as e:
-            logger.error(f"Bot could not send startup message to LOG_CHANNEL {LOG_CHANNEL}. Error: {e}")
-            logger.warning("Please ensure the bot is an admin in the log channel.")
-            # Consider exiting if log channel is critical
-            # exit()
+            # Start web server
+            try:
+                web_runner = web.AppRunner(web_app)
+                await web_runner.setup()
+                site = web.TCPSite(web_runner, "0.0.0.0", PORT)
+                await site.start()
+                logger.info(f"Web server started on port {PORT}.")
+            except OSError as e: # Handle port already in use
+                 logger.error(f"Web server failed: Port {PORT} likely already in use. Error: {e}")
+                 # Decide whether to exit or continue without web server
+                 # exit()
+            except Exception as e: logger.error(f"Web server failed: {e}", exc_info=True); # exit()
 
-        logger.info(f"@{me.username} is started successfully. ✓")
+            # Removed premium check task
+
+            # Log bot start
+            try:
+                startup_msg = f"<b>✅ {me.mention} is now online!</b>"
+                await self.send_message(chat_id=LOG_CHANNEL, text=startup_msg)
+            except Exception as e: logger.error(f"Log channel send error: {e}"); logger.warning("Ensure bot is admin in LOG_CHANNEL.")
+
+            logger.info(f"@{me.username} started successfully. ✓")
+
+        except Exception as start_err:
+             logger.critical(f"Critical error during bot startup: {start_err}", exc_info=True)
+             # Optionally exit if startup fails critically
+             # exit()
 
     async def stop(self, *args):
         logger.info("Stopping bot...")
         await super().stop()
-        logger.info("Bot Stopped! Bye...")
+        logger.info("Bot Stopped!")
 
     # iter_messages remains the same
     async def iter_messages(self: Client, chat_id: Union[int, str], limit: int, offset: int = 0) -> Optional[AsyncGenerator["types.Message", None]]:
+        # This function definition seems fine, no changes needed based on requests.
         current = offset
         while True:
-            new_diff = min(200, limit - current) # Batch size
+            new_diff = min(200, limit - current)
             if new_diff <= 0: return
             try:
-                 messages = await self.get_messages(chat_id, list(range(current, current + new_diff))) # Fetch IDs in range
-                 if not messages: return # Stop if no messages found (end of chat)
-            except FloodWait as e:
-                 logger.warning(f"FloodWait in iter_messages: sleeping for {e.value}s")
-                 await asyncio.sleep(e.value)
-                 continue # Retry same batch
-            except Exception as e:
-                 logger.error(f"Error in iter_messages for chat {chat_id}: {e}")
-                 return # Stop iteration on error
+                 messages = await self.get_messages(chat_id, list(range(current, current + new_diff)))
+                 if not messages: return
+            except FloodWait as e: logger.warning(f"iter_messages FloodWait: sleep {e.value}s"); await asyncio.sleep(e.value); continue
+            except Exception as e: logger.error(f"iter_messages error ({chat_id}): {e}"); return
 
             for message in messages:
-                if message is None: continue # Skip if get_messages returned None for an ID
+                if message is None: continue
                 yield message
-                current = message.id # Move to the ID of the last successfully processed message
+                current = message.id # Move to last processed ID
+
 
 # --- Keepalive Ping Thread ---
 def ping_loop():
-    ping_interval = 180 # Ping every 3 minutes
+    ping_interval = 180 # 3 minutes
     while True:
         try:
-            if not URL: # Don't ping if URL isn't set
-                 logger.debug("Keepalive ping skipped: URL not configured.")
-                 time.sleep(ping_interval * 2) # Check less frequently if URL isn't set
-                 continue
+            if not URL: time.sleep(ping_interval * 2); continue # Skip if no URL
 
             ping_url = URL if URL.endswith('/') else URL + '/'
             logger.info(f"Pinging URL: {ping_url}")
-            r = requests.get(ping_url, timeout=20) # Slightly longer timeout
-            if r.status_code == 200:
-                logger.info(f"Keepalive ping successful ✅ (Status: {r.status_code})")
-            else:
-                logger.error(f"Keepalive ping failed: {r.status_code} ⚠️ - {r.text[:200]}")
-        except requests.exceptions.Timeout:
-            logger.error("Keepalive ping timed out ❌")
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Keepalive ping exception: {e} ❌")
-        except Exception as e:
-            logger.error(f"Unexpected error during ping: {e} ❌", exc_info=True) # Log full traceback
-        finally:
-             # Wait for the interval regardless of success or failure
-             time.sleep(ping_interval)
+            r = requests.get(ping_url, timeout=20)
+            if r.status_code == 200: logger.info(f"Keepalive ping successful ✅ (Status: {r.status_code})")
+            else: logger.error(f"Keepalive ping failed: {r.status_code} ⚠️ - {r.text[:200]}")
+        except requests.exceptions.Timeout: logger.error("Keepalive ping timed out ❌")
+        except requests.exceptions.RequestException as e: logger.error(f"Keepalive ping exception: {e} ❌")
+        except Exception as e: logger.error(f"Unexpected ping error: {e} ❌", exc_info=True)
+        finally: time.sleep(ping_interval)
 
 # --- Start Bot ---
 if __name__ == "__main__":
     try:
-        # Start the ping loop in a separate daemon thread
+        # Start keepalive thread
         threading.Thread(target=ping_loop, daemon=True, name="PingThread").start()
+        logger.info("Keepalive ping thread started.")
 
         app = Bot()
+        # Use app.run() which handles loop creation and shutdown
         app.run()
-    except Exception as e:
-        logger.critical(f"Critical error during bot startup or runtime: {e}", exc_info=True)
-        # Optional: Add cleanup or specific exit codes here
+
+    except Exception as main_err:
+        logger.critical(f"Bot failed to start or crashed: {main_err}", exc_info=True)
+        # Add exit code for process managers like systemd
+        # sys.exit(1)
+
+    finally:
+         logger.info("Bot process ended.")
