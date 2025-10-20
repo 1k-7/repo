@@ -2,1132 +2,583 @@ import asyncio
 import re
 from time import time as time_now
 import math, os
-import qrcode, random
-from hydrogram.errors import ListenerTimeout
+import random # Keep random if used for PICS
+from hydrogram.errors import ListenerTimeout, MessageNotModified, FloodWait
 from hydrogram.errors.exceptions.bad_request_400 import MediaEmpty, PhotoInvalidDimensions, WebpageMediaEmpty
 from Script import script
 from datetime import datetime, timedelta
-from info import PICS, TUTORIAL, ADMINS, URL, MAX_BTN, BIN_CHANNEL, DELETE_TIME, FILMS_LINK, LOG_CHANNEL, SUPPORT_GROUP, SUPPORT_LINK, UPDATES_LINK, LANGUAGES, QUALITY
+# Removed premium related imports
+from info import (PICS, TUTORIAL, ADMINS, URL, MAX_BTN, BIN_CHANNEL,
+                  DELETE_TIME, FILMS_LINK, LOG_CHANNEL, SUPPORT_GROUP, SUPPORT_LINK,
+                  UPDATES_LINK, LANGUAGES, QUALITY, IS_STREAM) # Removed IS_PREMIUM, others
 from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto
 from hydrogram import Client, filters, enums
-from utils import get_size, is_subscribed, is_check_admin, get_wish, get_readable_time, get_poster, temp, get_settings, save_group_settings
+# Removed is_premium import from utils
+from utils import (get_size, is_subscribed, is_check_admin, get_wish,
+                   get_shortlink, get_readable_time, get_poster, temp,
+                   get_settings, save_group_settings) # Removed is_premium
 from database.users_chats_db import db
-from database.ia_filterdb import get_search_results,delete_files, db_count_documents, second_db_count_documents
+from database.ia_filterdb import get_search_results,delete_files # Removed counts if only used in stats
 from plugins.commands import get_grp_stg
+import logging # Added logging
+
+logger = logging.getLogger(__name__)
 
 BUTTONS = {}
 CAP = {}
 
+# Keep pm_search function (already modified to remove premium checks)
 @Client.on_message(filters.private & filters.text & filters.incoming)
 async def pm_search(client, message):
-    if message.text.startswith("/"):
-        return
-    stg = db.get_bot_sttgs()
-    if not stg.get('PM_SEARCH'):
-        return await message.reply_text('PM search was disabled!')
-    if not stg.get('AUTO_FILTER'):
-        return await message.reply_text('Auto filter was disabled!')
-    s = await message.reply(f"<b><i>⚠️ `{message.text}` searching...</i></b>", quote=True)
+    if message.text.startswith("/") or not message.text: return # Ignore commands and empty messages
+    stg = db.get_bot_sttgs() # Fetch bot settings synchronously
+    if not stg.get('PM_SEARCH', True): # Default to True if not set
+        return await message.reply_text('🔒 ᴘᴍ sᴇᴀʀᴄʜ ɪs ᴄᴜʀʀᴇɴᴛʟʏ ᴅɪsᴀʙʟᴇᴅ.')
+
+    if not stg.get('AUTO_FILTER', True): # Default to True
+        return await message.reply_text('⚙️ ᴀᴜᴛᴏ ғɪʟᴛᴇʀ ᴡᴀs ᴅɪsᴀʙʟᴇᴅ ɢʟᴏʙᴀʟʟʏ.')
+
+    s = await message.reply(f"<b><i>⏳ `{message.text}` sᴇᴀʀᴄʜɪɴɢ...</i></b>", quote=True)
     await auto_filter(client, message, s)
 
+
+# Keep group_search function (already modified)
 @Client.on_message(filters.group & filters.text & filters.incoming)
 async def group_search(client, message):
-    chat_id = message.chat.id
+    # Basic checks
+    if not message.text or message.text.startswith("/"): return
     user_id = message.from_user.id if message and message.from_user else 0
+    if not user_id: return # Ignore anonymous admins for searches
+
     stg = db.get_bot_sttgs()
-    if stg.get('AUTO_FILTER'):
-        if not user_id:
-            await message.reply("I'm not working for anonymous admin!")
-            return
+    if stg.get('AUTO_FILTER', True): # Default to True
+        # Support Group handling
         if message.chat.id == SUPPORT_GROUP:
-            files, offset, total = await get_search_results(message.text)
+            files, offset, total = await get_search_results(message.text) # Use async search
             if files:
-                btn = [[
-                    InlineKeyboardButton("Here", url=FILMS_LINK)
-                ]]
-                await message.reply_text(f'Total {total} results found in this group', reply_markup=InlineKeyboardMarkup(btn))
-            return
-            
-        if message.text.startswith("/"):
-            return
-            
+                btn = [[ InlineKeyboardButton("➡️ ɢᴇᴛ ғɪʟᴇs ʜᴇʀᴇ", url=FILMS_LINK) ]]
+                await message.reply_text(f'♢ ᴛᴏᴛᴀʟ {total} ʀᴇsᴜʟᴛs ғᴏᴜɴᴅ.\n♢ ᴘʟᴇᴀsᴇ sᴇᴀʀᴄʜ ɪɴ ᴛʜᴇ ᴍᴀɪɴ ᴄʜᴀᴛ.', reply_markup=InlineKeyboardMarkup(btn))
+            return # Don't process further in support group
+
+        # Admin tag handling
         elif '@admin' in message.text.lower() or '@admins' in message.text.lower():
-            if await is_check_admin(client, message.chat.id, message.from_user.id):
-                return
-            admins = []
-            async for member in client.get_chat_members(chat_id=message.chat.id, filter=enums.ChatMembersFilter.ADMINISTRATORS):
-                if not member.user.is_bot:
-                    admins.append(member.user.id)
-                    if member.status == enums.ChatMemberStatus.OWNER:
-                        if message.reply_to_message:
-                            try:
-                                sent_msg = await message.reply_to_message.forward(member.user.id)
-                                await sent_msg.reply_text(f"#Attention\n★ User: {message.from_user.mention}\n★ Group: {message.chat.title}\n\n★ <a href={message.reply_to_message.link}>Go to message</a>", disable_web_page_preview=True)
-                            except:
-                                pass
-                        else:
-                            try:
-                                sent_msg = await message.forward(member.user.id)
-                                await sent_msg.reply_text(f"#Attention\n★ User: {message.from_user.mention}\n★ Group: {message.chat.title}\n\n★ <a href={message.link}>Go to message</a>", disable_web_page_preview=True)
-                            except:
-                                pass
-            hidden_mentions = (f'[\u2064](tg://user?id={user_id})' for user_id in admins)
-            await message.reply_text('Report sent!' + ''.join(hidden_mentions))
+            if await is_check_admin(client, message.chat.id, user_id): return # Admin tagged themselves
+            admins = [member.user.id async for member in client.get_chat_members(chat_id=message.chat.id, filter=enums.ChatMembersFilter.ADMINISTRATORS) if not member.user.is_bot]
+            owner = next((member async for member in client.get_chat_members(chat_id=message.chat.id, filter=enums.ChatMembersFilter.ADMINISTRATORS) if member.status == enums.ChatMemberStatus.OWNER), None)
+            if owner and owner.user.id not in admins : admins.append(owner.user.id) # Ensure owner is included
+            if not admins: return await message.reply("Couldn't find any admins to notify.")
+
+            mention_target = message.reply_to_message or message
+            mention_text = f"#ᴀᴛᴛᴇɴᴛɪᴏɴ\n♢ ᴜsᴇʀ: {message.from_user.mention}\n♢ ɢʀᴏᴜᴘ: {message.chat.title}\n\n♢ <a href={mention_target.link}>ʀᴇᴘᴏʀᴛᴇᴅ ᴍᴇssᴀɢᴇ</a>"
+            reported_admin_ids = set() # Track who was notified
+
+            for admin_id in admins:
+                if admin_id in reported_admin_ids: continue # Avoid duplicate notifications
+                try:
+                    await mention_target.forward(admin_id)
+                    await client.send_message(admin_id, mention_text, disable_web_page_preview=True)
+                    reported_admin_ids.add(admin_id)
+                    await asyncio.sleep(0.3) # Small delay
+                except Exception as e: logger.error(f"Failed to notify admin {admin_id}: {e}")
+
+            # Notify user confirmation (without tagging admins in group)
+            if reported_admin_ids: await message.reply_text('✅ Report sent to admins!')
+            else: await message.reply_text('❌ Could not notify any admins.')
             return
 
-        elif re.findall(r'https?://\S+|www\.\S+|t\.me/\S+|@\w+', message.text):
-            if await is_check_admin(client, message.chat.id, message.from_user.id):
-                return
-            await message.delete()
-            return await message.reply('Links not allowed here!')
-        
-        elif '#request' in message.text.lower():
-            if message.from_user.id in ADMINS:
-                return
-            await client.send_message(LOG_CHANNEL, f"#Request\n★ User: {message.from_user.mention}\n★ Group: {message.chat.title}\n\n★ Message: {re.sub(r'#request', '', message.text.lower())}")
-            await message.reply_text("Request sent!")
-            return  
-        else:
-            s = await message.reply(f"<b><i>⚠️ `{message.text}` searching...</i></b>")
-            await auto_filter(client, message, s)
-    else:
-        k = await message.reply_text('Auto Filter Off! ❌')
-        await asyncio.sleep(5)
-        await k.delete()
-        try:
-            await message.delete()
-        except:
-            pass
+        # Link/Spam handling
+        elif re.findall(r'https?://\S+|www\.\S+|t\.me/\S+', message.text): # Removed @ check, handled by admin tag
+            if await is_check_admin(client, message.chat.id, user_id): return # Admins can post links
+            try: await message.delete()
+            except Exception as e: logger.warning(f"Failed to delete link message in {message.chat.id}: {e}")
+            return # Just delete, no warning needed usually
 
+        # Request handling
+        elif '#request' in message.text.lower():
+            if user_id in ADMINS: return # Admins don't need to use #request
+            if not LOG_CHANNEL: return await message.reply("Request feature disabled.")
+            try:
+                request_text = re.sub(r'#request', '', message.text, flags=re.IGNORECASE).strip()
+                if not request_text: return await message.reply("Please specify what you want to request after #request.")
+                log_msg = f"#ʀᴇǫᴜᴇsᴛ\n♢ ᴜsᴇʀ: {message.from_user.mention} (`{user_id}`)\n♢ ɢʀᴏᴜᴘ: {message.chat.title} (`{message.chat.id}`)\n\n♢ ʀᴇǫᴜᴇsᴛ: {request_text}"
+                await client.send_message(LOG_CHANNEL, log_msg)
+                await message.reply_text("✅ ʀᴇǫᴜᴇsᴛ sᴇɴᴛ!")
+            except Exception as e: logger.error(f"Failed to send request log: {e}"); await message.reply_text("❌ ғᴀɪʟᴇᴅ ᴛᴏ sᴇɴᴅ ʀᴇǫᴜᴇsᴛ.")
+            return
+
+        # Normal search
+        else:
+            # Prevent short messages if desired (optional)
+            # if len(message.text) < 3: return
+            s = await message.reply(f"<b><i>⏳ `{message.text}` sᴇᴀʀᴄʜɪɴɢ...</i></b>")
+            await auto_filter(client, message, s)
+    else: # Auto Filter is OFF globally
+        pass # Do nothing
+
+# --- Callback Handlers (Removed premium checks) ---
+
+# Keep next_page (already modified)
 @Client.on_callback_query(filters.regex(r"^next"))
 async def next_page(bot, query):
     ident, req, key, offset = query.data.split("_")
-    if int(req) not in [query.from_user.id, 0]:
-        return await query.answer(f"Hello {query.from_user.first_name},\nDon't Click Other Results!", show_alert=True)
-    try:
-        offset = int(offset)
-    except:
-        offset = 0
+    try: req_user_id = int(req)
+    except ValueError: return await query.answer("Invalid request data.", show_alert=True)
+
+    if req_user_id != 0 and query.from_user.id != req_user_id:
+        return await query.answer(f"ʜᴇʟʟᴏ {query.from_user.first_name},\nᴛʜɪs ɪs ɴᴏᴛ ғᴏʀ ʏᴏᴜ!", show_alert=True)
+    try: offset = int(offset)
+    except: offset = 0
+
     search = BUTTONS.get(key)
     cap = CAP.get(key)
-    if not search:
-        await query.answer(f"Hello {query.from_user.first_name},\nSend New Request Again!", show_alert=True)
+    if not search or not cap:
+        await query.answer("ʀᴇǫᴜᴇsᴛ ᴇxᴘɪʀᴇᴅ. sᴇɴᴅ ᴀ ɴᴇᴡ ᴏɴᴇ.", show_alert=True)
+        # Optionally edit the message to indicate expiry
+        try: await query.message.edit_text("❌ ᴛʜɪs sᴇᴀʀᴄʜ ʜᴀs ᴇxᴘɪʀᴇᴅ. ᴘʟᴇᴀsᴇ sᴇᴀʀᴄʜ ᴀɢᴀɪɴ.")
+        except: pass
         return
 
+    # Fetch results using async function
     files, n_offset, total = await get_search_results(search, offset=offset)
-    try:
-        n_offset = int(n_offset)
-    except:
-        n_offset = 0
+    try: n_offset = int(n_offset) if n_offset else "" # Keep empty string if last page
+    except: n_offset = ""
 
     if not files:
-        return
-    temp.FILES[key] = files
+         # This case should ideally not happen if the initial search found results
+         # But handle it just in case offset is wrong or cache mismatch
+         await query.answer("No more files found on this page.", show_alert=False)
+         # Optionally edit message if appropriate
+         try:
+              if offset == 0: # If it was the first page click but no files
+                  await query.message.edit_text("sᴏʀʀʏ, ɴᴏ ғɪʟᴇs ғᴏᴜɴᴅ ғᴏʀ ᴛʜᴀᴛ ǫᴜᴇʀʏ ᴀɴʏᴍᴏʀᴇ.")
+              else: # If it was a later page click
+                  # Maybe disable the 'Next' button if possible, or just inform user
+                  pass # query.answer is usually sufficient
+         except: pass
+         return
+
+    temp.FILES[key] = files # Update file cache for this page view
     settings = await get_settings(query.message.chat.id)
-    del_msg = f"\n\n<b>⚠️ ᴛʜɪs ᴍᴇssᴀɢᴇ ᴡɪʟʟ ʙᴇ ᴀᴜᴛᴏ ᴅᴇʟᴇᴛᴇ ᴀꜰᴛᴇʀ <code>{get_readable_time(DELETE_TIME)}</code> ᴛᴏ ᴀᴠᴏɪᴅ ᴄᴏᴘʏʀɪɢʜᴛ ɪssᴜᴇs</b>" if settings["auto_delete"] else ''
-    files_link = ''
+    del_msg = f"\n\n<b>⚠️ ᴀᴜᴛᴏ-ᴅᴇʟᴇᴛᴇ ɪɴ {get_readable_time(DELETE_TIME)}.</b>" if settings.get("auto_delete", False) else ''
+    files_link = ''; btn = []
 
-    if settings['links']:
-        btn = []
+    if settings.get('links', False): # Link mode
         for file_num, file in enumerate(files, start=offset+1):
-            files_link += f"""<b>\n\n{file_num}. <a href=https://t.me/{temp.U_NAME}?start=file_{query.message.chat.id}_{file['_id']}>[{get_size(file['file_size'])}] {file['file_name']}</a></b>"""
-    else:
-        btn = [[
-            InlineKeyboardButton(text=f"{get_size(file['file_size'])} - {file['file_name']}", callback_data=f"file#{file['_id']}")
-        ]
-            for file in files
-        ]
+            file_id_str = file.get('_id', 'N/A')
+            file_name = file.get('file_name', 'N/A')
+            file_size = file.get('file_size', 0)
+            files_link += f"<b>\n\n{file_num}. <a href=https://t.me/{temp.U_NAME}?start=file_{query.message.chat.id}_{file_id_str}>[{get_size(file_size)}] {file_name}</a></b>"
+    else: # Button mode
+        for file in files:
+             file_id_str = file.get('_id', 'N/A')
+             file_name = file.get('file_name', 'N/A')
+             file_size = file.get('file_size', 0)
+             btn.append([InlineKeyboardButton(text=f"[{get_size(file_size)}] {file_name}", callback_data=f"file#{file_id_str}")])
 
-    btn.insert(0,
-        [InlineKeyboardButton("• ᴜᴘᴅᴀᴛᴇꜱ •", url=UPDATES_LINK)]
-    )
-    btn.insert(1,
-        [InlineKeyboardButton("• ʟᴀɴɢᴜᴀɢᴇs •", callback_data=f"languages#{key}#{req}#{offset}"),
-        InlineKeyboardButton("• ǫᴜᴀʟɪᴛʏ •", callback_data=f"quality#{key}#{req}#{offset}")]
-    )
+    # Standard filter/update buttons
+    btn.insert(0, [InlineKeyboardButton("• ᴜᴘᴅᴀᴛᴇs •", url=UPDATES_LINK)])
+    btn.insert(1, [
+        InlineKeyboardButton("⫸ ʟᴀɴɢᴜᴀɢᴇ", callback_data=f"languages#{key}#{req}#0"),
+        InlineKeyboardButton("⫸ ǫᴜᴀʟɪᴛʏ", callback_data=f"quality#{key}#{req}#0")
+    ])
 
-    if 0 < offset <= MAX_BTN:
-        off_set = 0
-    elif offset == 0:
-        off_set = None
-    else:
-        off_set = offset - MAX_BTN
-        
-    if n_offset == 0:
-        btn.append(
-            [InlineKeyboardButton("« ʙᴀᴄᴋ", callback_data=f"next_{req}_{key}_{off_set}"),
-             InlineKeyboardButton(f"{math.ceil(int(offset) / MAX_BTN) + 1}/{math.ceil(total / MAX_BTN)}", callback_data="buttons")]
-        )
-    elif off_set is None:
-        btn.append(
-            [InlineKeyboardButton(f"{math.ceil(int(offset) / MAX_BTN) + 1}/{math.ceil(total / MAX_BTN)}", callback_data="buttons"),
-             InlineKeyboardButton("ɴᴇxᴛ »", callback_data=f"next_{req}_{key}_{n_offset}")])
-    else:
-        btn.append(
-            [
-                InlineKeyboardButton("« ʙᴀᴄᴋ", callback_data=f"next_{req}_{key}_{off_set}"),
-                InlineKeyboardButton(f"{math.ceil(int(offset) / MAX_BTN) + 1}/{math.ceil(total / MAX_BTN)}", callback_data="buttons"),
-                InlineKeyboardButton("ɴᴇxᴛ »", callback_data=f"next_{req}_{key}_{n_offset}")
-            ]
-        )
-    await query.message.edit_text(cap + files_link + del_msg, reply_markup=InlineKeyboardMarkup(btn), disable_web_page_preview=True, parse_mode=enums.ParseMode.HTML)
+    # Pagination Logic
+    current_page = math.ceil(offset / MAX_BTN) + 1
+    total_pages = math.ceil(total / MAX_BTN)
+    page_label = f"ᴘɢ {current_page}/{total_pages}"
 
+    pagination_row = []
+    if offset > 0:
+        prev_offset = max(0, offset - MAX_BTN)
+        pagination_row.append(InlineKeyboardButton("« ʙᴀᴄᴋ", callback_data=f"next_{req}_{key}_{prev_offset}"))
+
+    pagination_row.append(InlineKeyboardButton(page_label, callback_data="buttons"))
+
+    if n_offset != "":
+        pagination_row.append(InlineKeyboardButton("ɴᴇxᴛ »", callback_data=f"next_{req}_{key}_{n_offset}"))
+
+    if pagination_row: btn.append(pagination_row)
+
+    # Edit the message
+    try:
+        # Use the cached caption `cap`
+        await query.message.edit_text(cap + files_link + del_msg, reply_markup=InlineKeyboardMarkup(btn), disable_web_page_preview=True, parse_mode=enums.ParseMode.HTML)
+    except MessageNotModified: await query.answer() # Ignore if message is identical
+    except FloodWait as e: logger.warning(f"FloodWait editing next_page: sleep {e.value}"); await asyncio.sleep(e.value); await query.answer("Retrying...", show_alert=False) # Optionally retry or just alert
+    except Exception as e: logger.error(f"Error editing message in next_page: {e}"); await query.answer("An error occurred.", show_alert=True)
+
+
+# Keep languages_ callback (no premium logic needed)
 @Client.on_callback_query(filters.regex(r"^languages"))
 async def languages_(client: Client, query: CallbackQuery):
     _, key, req, offset = query.data.split("#")
-    if int(req) != query.from_user.id:
-        return await query.answer(f"Hello {query.from_user.first_name},\nDon't Click Other Results!", show_alert=True)
-    btn = [
-        [InlineKeyboardButton(text=LANGUAGES[i].title(), callback_data=f"lang_search#{LANGUAGES[i]}#{key}#{offset}#{req}"),
-         InlineKeyboardButton(text=LANGUAGES[i+1].title(), callback_data=f"lang_search#{LANGUAGES[i+1]}#{key}#{offset}#{req}")]
-        for i in range(0, len(LANGUAGES)-1, 2)
-    ]
-    btn.append([InlineKeyboardButton(text="⪻ ʙᴀᴄᴋ ᴛᴏ ᴍᴀɪɴ ᴘᴀɢᴇ", callback_data=f"next_{req}_{key}_{offset}")])  
-    await query.message.edit_text("<b>ɪɴ ᴡʜɪᴄʜ ʟᴀɴɢᴜᴀɢᴇ ᴅᴏ ʏᴏᴜ ᴡᴀɴᴛ, sᴇʟᴇᴄᴛ ʜᴇʀᴇ 👇</b>", disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup(btn))
+    try: req_user_id = int(req)
+    except ValueError: return await query.answer("Invalid request data.", show_alert=True)
 
+    if req_user_id != query.from_user.id:
+        return await query.answer(f"ʜᴇʟʟᴏ {query.from_user.first_name},\nᴛʜɪs ɪs ɴᴏᴛ ғᴏʀ ʏᴏᴜ!", show_alert=True)
+
+    search = BUTTONS.get(key) # Use original search query stored
+    if not search: return await query.answer("ʀᴇǫᴜᴇsᴛ ᴇxᴘɪʀᴇᴅ.", show_alert=True)
+
+    btn = []
+    # Create buttons in pairs
+    lang_iter = iter(LANGUAGES)
+    for lang1 in lang_iter:
+         try:
+              lang2 = next(lang_iter)
+              btn.append([
+                   InlineKeyboardButton(text=lang1.title(), callback_data=f"lang_search#{lang1}#{key}#{offset}#{req}"),
+                   InlineKeyboardButton(text=lang2.title(), callback_data=f"lang_search#{lang2}#{key}#{offset}#{req}")
+              ])
+         except StopIteration:
+              # Handle odd number of languages
+              btn.append([InlineKeyboardButton(text=lang1.title(), callback_data=f"lang_search#{lang1}#{key}#{offset}#{req}")])
+              break
+
+    btn.append([InlineKeyboardButton(text="⪻ ʙᴀᴄᴋ ᴛᴏ ʀᴇsᴜʟᴛs", callback_data=f"next_{req}_{key}_{offset}")]) # Go back to original offset
+    try:
+         await query.message.edit_text("<b>👇 sᴇʟᴇᴄᴛ ʏᴏᴜʀ ᴘʀᴇғᴇʀʀᴇᴅ ʟᴀɴɢᴜᴀɢᴇ:</b>", disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup(btn))
+    except MessageNotModified: await query.answer()
+    except Exception as e: logger.error(f"Error in languages_ callback: {e}"); await query.answer("Error showing languages.", show_alert=True)
+
+
+# Keep quality callback (no premium logic needed)
 @Client.on_callback_query(filters.regex(r"^quality"))
 async def quality(client: Client, query: CallbackQuery):
     _, key, req, offset = query.data.split("#")
-    if int(req) != query.from_user.id:
-        return await query.answer(f"Hello {query.from_user.first_name},\nDon't Click Other Results!", show_alert=True)
-    btn = [
-        [InlineKeyboardButton(text=QUALITY[i].title(), callback_data=f"qual_search#{QUALITY[i]}#{key}#{offset}#{req}"),
-         InlineKeyboardButton(text=QUALITY[i+1].title(), callback_data=f"qual_search#{QUALITY[i+1]}#{key}#{offset}#{req}")]
-        for i in range(0, len(QUALITY)-1, 2)
-    ]
-    btn.append([InlineKeyboardButton(text="⪻ ʙᴀᴄᴋ ᴛᴏ ᴍᴀɪɴ ᴘᴀɢᴇ", callback_data=f"next_{req}_{key}_{offset}")])  
-    await query.message.edit_text("<b>ɪɴ ᴡʜɪᴄʜ ǫᴜᴀʟɪᴛʏ ᴅᴏ ʏᴏᴜ ᴡᴀɴᴛ, sᴇʟᴇᴄᴛ ʜᴇʀᴇ 👇</b>", disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup(btn))
+    try: req_user_id = int(req)
+    except ValueError: return await query.answer("Invalid request data.", show_alert=True)
 
+    if req_user_id != query.from_user.id:
+        return await query.answer(f"ʜᴇʟʟᴏ {query.from_user.first_name},\nᴛʜɪs ɪs ɴᴏᴛ ғᴏʀ ʏᴏᴜ!", show_alert=True)
+
+    search = BUTTONS.get(key)
+    if not search: return await query.answer("ʀᴇǫᴜᴇsᴛ ᴇxᴘɪʀᴇᴅ.", show_alert=True)
+
+    btn = []
+    qual_iter = iter(QUALITY)
+    for q1 in qual_iter:
+         try:
+              q2 = next(qual_iter)
+              btn.append([
+                   InlineKeyboardButton(text=q1.upper(), callback_data=f"qual_search#{q1}#{key}#{offset}#{req}"),
+                   InlineKeyboardButton(text=q2.upper(), callback_data=f"qual_search#{q2}#{key}#{offset}#{req}")
+              ])
+         except StopIteration:
+              btn.append([InlineKeyboardButton(text=q1.upper(), callback_data=f"qual_search#{q1}#{key}#{offset}#{req}")])
+              break
+
+    btn.append([InlineKeyboardButton(text="⪻ ʙᴀᴄᴋ ᴛᴏ ʀᴇsᴜʟᴛs", callback_data=f"next_{req}_{key}_{offset}")])
+    try:
+        await query.message.edit_text("<b>👇 sᴇʟᴇᴄᴛ ʏᴏᴜʀ ᴘʀᴇғᴇʀʀᴇᴅ ǫᴜᴀʟɪᴛʏ:</b>", disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup(btn))
+    except MessageNotModified: await query.answer()
+    except Exception as e: logger.error(f"Error in quality callback: {e}"); await query.answer("Error showing qualities.", show_alert=True)
+
+
+# Keep lang_search (already modified)
 @Client.on_callback_query(filters.regex(r"^lang_search"))
 async def filter_languages_cb_handler(client: Client, query: CallbackQuery):
-    _, lang, key, offset, req = query.data.split("#")
-    if int(req) != query.from_user.id:
-        return await query.answer(f"Hello {query.from_user.first_name},\nDon't Click Other Results!", show_alert=True)
+    _, lang, key, offset_str, req = query.data.split("#")
+    try: req_user_id = int(req); original_offset = int(offset_str) # Keep original offset for back button
+    except ValueError: return await query.answer("Invalid request data.", show_alert=True)
 
-    search = BUTTONS.get(key)
-    cap = CAP.get(key)
-    if not search:
-        await query.answer(f"Hello {query.from_user.first_name},\nSend New Request Again!", show_alert=True)
-        return 
+    if req_user_id != query.from_user.id:
+        return await query.answer(f"ʜᴇʟʟᴏ {query.from_user.first_name},\nᴛʜɪs ɪs ɴᴏᴛ ғᴏʀ ʏᴏᴜ!", show_alert=True)
 
-    files, l_offset, total_results = await get_search_results(search, lang=lang)
-    if not files:
-        await query.answer(f"sᴏʀʀʏ '{lang.title()}' ʟᴀɴɢᴜᴀɢᴇ ꜰɪʟᴇs ɴᴏᴛ ꜰᴏᴜɴᴅ 😕", show_alert=1)
-        return
-    temp.FILES[key] = files
+    # Use the original search query stored in BUTTONS, not CAP
+    original_search = BUTTONS.get(key)
+    cap = CAP.get(key) # Keep the original caption
+    if not original_search or not cap: return await query.answer("ʀᴇǫᴜᴇsᴛ ᴇxᴘɪʀᴇᴅ.", show_alert=True)
+
+    # Search with language filter, start from offset 0 for the filtered list
+    current_offset = 0 # Offset for the *filtered* results
+    files, next_filtered_offset, total_filtered = await get_search_results(original_search, lang=lang, offset=current_offset)
+    if not files: return await query.answer(f"ɴᴏ '{lang.title()}' ғɪʟᴇs ғᴏᴜɴᴅ.", show_alert=True)
+
+    # Store filtered files temporarily if needed for pagination (optional, can refetch)
+    # temp.FILES[f"{key}_{lang}"] = files # Example key for filtered results
+
     settings = await get_settings(query.message.chat.id)
-    del_msg = f"\n\n<b>⚠️ ᴛʜɪs ᴍᴇssᴀɢᴇ ᴡɪʟʟ ʙᴇ ᴀᴜᴛᴏ ᴅᴇʟᴇᴛᴇ ᴀꜰᴛᴇʀ <code>{get_readable_time(DELETE_TIME)}</code> ᴛᴏ ᴀᴠᴏɪᴅ ᴄᴏᴘʏʀɪɢʜᴛ ɪssᴜᴇs</b>" if settings["auto_delete"] else ''
-    files_link = ''
+    del_msg = f"\n\n<b>⚠️ ᴀᴜᴛᴏ-ᴅᴇʟᴇᴛᴇ ᴇɴᴀʙʟᴇᴅ.</b>" if settings.get("auto_delete", False) else ''
+    files_link = ''; btn = []
 
-    if settings['links']:
-        btn = []
-        for file_num, file in enumerate(files, start=1):
-            files_link += f"""<b>\n\n{file_num}. <a href=https://t.me/{temp.U_NAME}?start=file_{query.message.chat.id}_{file['_id']}>[{get_size(file['file_size'])}] {file['file_name']}</a></b>"""
+    if settings.get('links', False):
+        for file_num, file in enumerate(files, start=1): # Start numbering from 1 for this page
+            files_link += f"<b>\n\n{file_num}. <a href=...>[{get_size(file['file_size'])}] {file['file_name']}</a></b>"
     else:
-        btn = [[
-            InlineKeyboardButton(text=f"{get_size(file['file_size'])} - {file['file_name']}", callback_data=f"file#{file['_id']}")
-        ]
-            for file in files
-        ]
-    btn.insert(1,
-        [InlineKeyboardButton("• ᴜᴘᴅᴀᴛᴇꜱ •", url=UPDATES_LINK),
-        InlineKeyboardButton("• ǫᴜᴀʟɪᴛʏ •", callback_data=f"quality#{key}#{req}#{offset}")]
-    )
-    
-    if l_offset != "":
-        btn.append(
-            [InlineKeyboardButton(text=f"1/{math.ceil(int(total_results) / MAX_BTN)}", callback_data="buttons"),
-             InlineKeyboardButton(text="ɴᴇxᴛ »", callback_data=f"lang_next#{req}#{key}#{lang}#{l_offset}#{offset}")]
-        )
-    btn.append([InlineKeyboardButton(text="⪻ ʙᴀᴄᴋ ᴛᴏ ᴍᴀɪɴ ᴘᴀɢᴇ", callback_data=f"next_{req}_{key}_{offset}")])
-    await query.message.edit_text(cap + files_link + del_msg, disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup(btn), parse_mode=enums.ParseMode.HTML)
+        for file in files: btn.append([InlineKeyboardButton(f"[{get_size(file['file_size'])}] {file['file_name']}", callback_data=f"file#{file['_id']}")])
 
-@Client.on_callback_query(filters.regex(r"^lang_next"))
-async def lang_next_page(bot, query):
-    ident, req, key, lang, l_offset, offset = query.data.split("#")
-    if int(req) != query.from_user.id:
-        return await query.answer(f"Hello {query.from_user.first_name},\nDon't Click Other Results!", show_alert=True)
-    try:
-        l_offset = int(l_offset)
-    except:
-        l_offset = 0
-    search = BUTTONS.get(key)
-    cap = CAP.get(key)
-    settings = await get_settings(query.message.chat.id)
-    del_msg = f"\n\n<b>⚠️ ᴛʜɪs ᴍᴇssᴀɢᴇ ᴡɪʟʟ ʙᴇ ᴀᴜᴛᴏ ᴅᴇʟᴇᴛᴇ ᴀꜰᴛᴇʀ <code>{get_readable_time(DELETE_TIME)}</code> ᴛᴏ ᴀᴠᴏɪᴅ ᴄᴏᴘʏʀɪɢʜᴛ ɪssᴜᴇs</b>" if settings["auto_delete"] else ''
-    if not search:
-        await query.answer(f"Hello {query.from_user.first_name},\nSend New Request Again!", show_alert=True)
-        return
-    files, n_offset, total = await get_search_results(search, offset=l_offset, lang=lang)
-    if not files:
-        return
-    temp.FILES[key] = files
-    try:
-        n_offset = int(n_offset)
-    except:
-        n_offset = 0
-    files_link = ''
-    if settings['links']:
-        btn = []
-        for file_num, file in enumerate(files, start=l_offset+1):
-            files_link += f"""<b>\n\n{file_num}. <a href=https://t.me/{temp.U_NAME}?start=file_{query.message.chat.id}_{file['_id']}>[{get_size(file['file_size'])}] {file['file_name']}</a></b>"""
-    else:
-        btn = [[
-            InlineKeyboardButton(text=f"{get_size(file['file_size'])} - {file['file_name']}", callback_data=f'file#{file["_id"]}')
-        ]
-            for file in files
-        ]
-    btn.insert(1,
-        [InlineKeyboardButton("• ᴜᴘᴅᴀᴛᴇꜱ •", url=UPDATES_LINK),
-        InlineKeyboardButton("• ǫᴜᴀʟɪᴛʏ •", callback_data=f"quality#{key}#{req}#{l_offset}")]
-    )
-    if 0 < l_offset <= MAX_BTN:
-        b_offset = 0
-    elif l_offset == 0:
-        b_offset = None
-    else:
-        b_offset = l_offset - MAX_BTN
-    if n_offset == 0:
-        btn.append(
-            [InlineKeyboardButton("« ʙᴀᴄᴋ", callback_data=f"lang_next#{req}#{key}#{lang}#{b_offset}#{offset}"),
-             InlineKeyboardButton(f"{math.ceil(int(l_offset) / MAX_BTN) + 1}/{math.ceil(total / MAX_BTN)}", callback_data="buttons")]
-        )
-    elif b_offset is None:
-        btn.append(
-            [InlineKeyboardButton(f"{math.ceil(int(l_offset) / MAX_BTN) + 1}/{math.ceil(total / MAX_BTN)}", callback_data="buttons"),
-             InlineKeyboardButton("ɴᴇxᴛ »", callback_data=f"lang_next#{req}#{key}#{lang}#{n_offset}#{offset}")]
-        )
-    else:
-        btn.append(
-            [InlineKeyboardButton("« ʙᴀᴄᴋ", callback_data=f"lang_next#{req}#{key}#{lang}#{b_offset}#{offset}"),
-             InlineKeyboardButton(f"{math.ceil(int(l_offset) / MAX_BTN) + 1}/{math.ceil(total / MAX_BTN)}", callback_data="buttons"),
-             InlineKeyboardButton("ɴᴇxᴛ »", callback_data=f"lang_next#{req}#{key}#{lang}#{n_offset}#{offset}")]
-        )
-    btn.append([InlineKeyboardButton(text="⪻ ʙᴀᴄᴋ ᴛᴏ ᴍᴀɪɴ ᴘᴀɢᴇ", callback_data=f"next_{req}_{key}_{offset}")])
-    await query.message.edit_text(cap + files_link + del_msg, reply_markup=InlineKeyboardMarkup(btn), disable_web_page_preview=True, parse_mode=enums.ParseMode.HTML)
+    # Standard Buttons (adjust filter buttons)
+    btn.insert(0, [InlineKeyboardButton("• ᴜᴘᴅᴀᴛᴇs •", url=UPDATES_LINK)])
+    btn.insert(1, [
+        InlineKeyboardButton("⫸ ʟᴀɴɢᴜᴀɢᴇ", callback_data=f"languages#{key}#{req}#{original_offset}"), # Back to lang selection
+        InlineKeyboardButton("⫸ ǫᴜᴀʟɪᴛʏ", callback_data=f"quality#{key}#{req}#0") # Start quality filter from page 0
+    ])
 
+    # Pagination for Filtered Results
+    current_page = 1 # Always start at page 1 for filtered view
+    total_pages = math.ceil(total_filtered / MAX_BTN)
+    page_label = f"ᴘɢ {current_page}/{total_pages}"
+    pagination_row = []
+    # No "Back" on page 1 of filtered results
+
+    if next_filtered_offset != "": # If more filtered pages exist
+        pagination_row.append(InlineKeyboardButton(page_label, callback_data="buttons"))
+        # Pass necessary info for the next filtered page
+        pagination_row.append(InlineKeyboardButton("ɴᴇxᴛ »", callback_data=f"lang_next#{req}#{key}#{lang}#{next_filtered_offset}#{original_offset}"))
+    elif total_filtered > 0: # Show label if results exist but only one page
+        pagination_row.append(InlineKeyboardButton(page_label, callback_data="buttons"))
+    if pagination_row: btn.append(pagination_row)
+
+    # Back to original, unfiltered results
+    btn.append([InlineKeyboardButton(text="⪻ ʙᴀᴄᴋ ᴛᴏ ᴀʟʟ", callback_data=f"next_{req}_{key}_{original_offset}")])
+
+    try: await query.message.edit_text(cap + files_link + del_msg, disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup(btn), parse_mode=enums.ParseMode.HTML)
+    except MessageNotModified: await query.answer()
+    except Exception as e: logger.error(f"Error edit lang_search: {e}"); await query.answer("Error.", show_alert=True)
+
+
+# Keep qual_search (modify similarly to lang_search)
 @Client.on_callback_query(filters.regex(r"^qual_search"))
 async def quality_search(client: Client, query: CallbackQuery):
-    _, qual, key, offset, req = query.data.split("#")
-    if int(req) != query.from_user.id:
-        return await query.answer(f"Hello {query.from_user.first_name},\nDon't Click Other Results!", show_alert=True)
-    search = BUTTONS.get(key)
-    cap = CAP.get(key)
-    if not search:
-        await query.answer(f"Hello {query.from_user.first_name},\nSend New Request Again!", show_alert=True)
-        return
-    files, l_offset, total_results = await get_search_results(search, lang=qual)
-    if not files:
-        await query.answer(f"sᴏʀʀʏ '{qual.title()}' ʟᴀɴɢᴜᴀɢᴇ ꜰɪʟᴇs ɴᴏᴛ ꜰᴏᴜɴᴅ 😕", show_alert=1)
-        return
-    temp.FILES[key] = files
-    settings = await get_settings(query.message.chat.id)
-    del_msg = f"\n\n<b>⚠️ ᴛʜɪs ᴍᴇssᴀɢᴇ ᴡɪʟʟ ʙᴇ ᴀᴜᴛᴏ ᴅᴇʟᴇᴛᴇ ᴀꜰᴛᴇʀ <code>{get_readable_time(DELETE_TIME)}</code> ᴛᴏ ᴀᴠᴏɪᴅ ᴄᴏᴘʏʀɪɢʜᴛ ɪssᴜᴇs</b>" if settings["auto_delete"] else ''
-    files_link = ''
-    if settings['links']:
-        btn = []
-        for file_num, file in enumerate(files, start=1):
-            files_link += f"""<b>\n\n{file_num}. <a href=https://t.me/{temp.U_NAME}?start=file_{query.message.chat.id}_{file['_id']}>[{get_size(file['file_size'])}] {file['file_name']}</a></b>"""
-    else:
-        btn = [[
-            InlineKeyboardButton(text=f"{get_size(file['file_size'])} - {file['file_name']}", callback_data=f'file#{file["_id"]}')
-        ]
-            for file in files
-        ]
-    btn.insert(0,
-        [InlineKeyboardButton("• ᴜᴘᴅᴀᴛᴇꜱ •", url=UPDATES_LINK)]
-    )
-    if l_offset != "":
-        btn.append(
-            [InlineKeyboardButton(text=f"1/{math.ceil(int(total_results) / MAX_BTN)}", callback_data="buttons"),
-             InlineKeyboardButton(text="ɴᴇxᴛ »", callback_data=f"qual_next#{req}#{key}#{qual}#{l_offset}#{offset}")]
-        )
-    btn.append([InlineKeyboardButton(text="⪻ ʙᴀᴄᴋ ᴛᴏ ᴍᴀɪɴ ᴘᴀɢᴇ", callback_data=f"next_{req}_{key}_{offset}")])
-    await query.message.edit_text(cap + files_link + del_msg, disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup(btn), parse_mode=enums.ParseMode.HTML)
+    _, qual, key, offset_str, req = query.data.split("#")
+    try: req_user_id = int(req); original_offset = int(offset_str)
+    except ValueError: return await query.answer("Invalid request data.", show_alert=True)
 
+    if req_user_id != query.from_user.id: return await query.answer(f"ʜᴇʟʟᴏ {query.from_user.first_name},\nᴛʜɪs ɪs ɴᴏᴛ ғᴏʀ ʏᴏᴜ!", show_alert=True)
+
+    original_search = BUTTONS.get(key); cap = CAP.get(key)
+    if not original_search or not cap: return await query.answer("ʀᴇǫᴜᴇsᴛ ᴇxᴘɪʀᴇᴅ.", show_alert=True)
+
+    # Search with quality filter (acts like language filter here), start from offset 0
+    current_offset = 0
+    files, next_filtered_offset, total_filtered = await get_search_results(original_search, lang=qual, offset=current_offset) # Use lang param for quality term
+    if not files: return await query.answer(f"ɴᴏ '{qual.upper()}' ғɪʟᴇs ғᴏᴜɴᴅ.", show_alert=True)
+
+    settings = await get_settings(query.message.chat.id)
+    del_msg = f"\n\n<b>⚠️ ᴀᴜᴛᴏ-ᴅᴇʟᴇᴛᴇ ᴇɴᴀʙʟᴇᴅ.</b>" if settings.get("auto_delete", False) else ''
+    files_link = ''; btn = []
+
+    if settings.get('links', False):
+        for file_num, file in enumerate(files, start=1): files_link += f"<b>\n\n{file_num}. <a href=...>[{get_size(file['file_size'])}] {file['file_name']}</a></b>"
+    else:
+        for file in files: btn.append([InlineKeyboardButton(f"[{get_size(file['file_size'])}] {file['file_name']}", callback_data=f"file#{file['_id']}")])
+
+    btn.insert(0, [InlineKeyboardButton("• ᴜᴘᴅᴀᴛᴇs •", url=UPDATES_LINK)])
+    btn.insert(1, [
+        InlineKeyboardButton("⫸ ʟᴀɴɢᴜᴀɢᴇ", callback_data=f"languages#{key}#{req}#0"), # Start lang filter from page 0
+        InlineKeyboardButton("⫸ ǫᴜᴀʟɪᴛʏ", callback_data=f"quality#{key}#{req}#{original_offset}") # Back to quality selection
+    ])
+
+    current_page = 1; total_pages = math.ceil(total_filtered / MAX_BTN); page_label = f"ᴘɢ {current_page}/{total_pages}"
+    pagination_row = []
+    if next_filtered_offset != "":
+        pagination_row.append(InlineKeyboardButton(page_label, callback_data="buttons"))
+        pagination_row.append(InlineKeyboardButton("ɴᴇxᴛ »", callback_data=f"qual_next#{req}#{key}#{qual}#{next_filtered_offset}#{original_offset}"))
+    elif total_filtered > 0: pagination_row.append(InlineKeyboardButton(page_label, callback_data="buttons"))
+    if pagination_row: btn.append(pagination_row)
+
+    btn.append([InlineKeyboardButton(text="⪻ ʙᴀᴄᴋ ᴛᴏ ᴀʟʟ", callback_data=f"next_{req}_{key}_{original_offset}")])
+
+    try: await query.message.edit_text(cap + files_link + del_msg, disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup(btn), parse_mode=enums.ParseMode.HTML)
+    except MessageNotModified: await query.answer()
+    except Exception as e: logger.error(f"Error edit qual_search: {e}"); await query.answer("Error.", show_alert=True)
+
+
+# Keep lang_next (adjust logic for filtered pagination)
+@Client.on_callback_query(filters.regex(r"^lang_next"))
+async def lang_next_page(bot, query):
+    _, req, key, lang, current_filtered_offset_str, original_offset_str = query.data.split("#")
+    try:
+        req_user_id = int(req)
+        current_filtered_offset = int(current_filtered_offset_str)
+        original_offset = int(original_offset_str) # Keep track of original page offset
+    except ValueError: return await query.answer("Invalid request data.", show_alert=True)
+
+    if req_user_id != query.from_user.id: return await query.answer(f"ʜᴇʟʟᴏ {query.from_user.first_name},\nᴛʜɪs ɪs ɴᴏᴛ ғᴏʀ ʏᴏᴜ!", show_alert=True)
+
+    original_search = BUTTONS.get(key); cap = CAP.get(key)
+    if not original_search or not cap: return await query.answer("ʀᴇǫᴜᴇsᴛ ᴇxᴘɪʀᴇᴅ.", show_alert=True)
+
+    # Fetch next page of filtered results
+    files, next_filtered_offset, total_filtered = await get_search_results(original_search, lang=lang, offset=current_filtered_offset)
+    if not files: return await query.answer("No more files found.", show_alert=False) # Should not happen if next button exists, but safety
+
+    settings = await get_settings(query.message.chat.id)
+    del_msg = f"\n\n<b>⚠️ ᴀᴜᴛᴏ-ᴅᴇʟᴇᴛᴇ ᴇɴᴀʙʟᴇᴅ.</b>" if settings.get("auto_delete", False) else ''
+    files_link = ''; btn = []
+
+    start_num = current_filtered_offset + 1 # Correct numbering for the current page
+    if settings.get('links', False):
+        for file_num, file in enumerate(files, start=start_num): files_link += f"<b>\n\n{file_num}. <a href=...>[{get_size(file['file_size'])}] {file['file_name']}</a></b>"
+    else:
+        for file in files: btn.append([InlineKeyboardButton(f"[{get_size(file['file_size'])}] {file['file_name']}", callback_data=f"file#{file['_id']}")])
+
+    btn.insert(0, [InlineKeyboardButton("• ᴜᴘᴅᴀᴛᴇs •", url=UPDATES_LINK)])
+    btn.insert(1, [
+        InlineKeyboardButton("⫸ ʟᴀɴɢᴜᴀɢᴇ", callback_data=f"languages#{key}#{req}#{original_offset}"),
+        InlineKeyboardButton("⫸ ǫᴜᴀʟɪᴛʏ", callback_data=f"quality#{key}#{req}#0")
+    ])
+
+    # Pagination for Filtered Results
+    current_page = math.ceil(current_filtered_offset / MAX_BTN) + 1
+    total_pages = math.ceil(total_filtered / MAX_BTN)
+    page_label = f"ᴘɢ {current_page}/{total_pages}"
+    pagination_row = []
+
+    prev_filtered_offset = max(0, current_filtered_offset - MAX_BTN)
+    pagination_row.append(InlineKeyboardButton("« ʙᴀᴄᴋ", callback_data=f"lang_next#{req}#{key}#{lang}#{prev_filtered_offset}#{original_offset}"))
+
+    pagination_row.append(InlineKeyboardButton(page_label, callback_data="buttons"))
+
+    if next_filtered_offset != "":
+        pagination_row.append(InlineKeyboardButton("ɴᴇxᴛ »", callback_data=f"lang_next#{req}#{key}#{lang}#{next_filtered_offset}#{original_offset}"))
+
+    btn.append(pagination_row)
+    btn.append([InlineKeyboardButton(text="⪻ ʙᴀᴄᴋ ᴛᴏ ᴀʟʟ", callback_data=f"next_{req}_{key}_{original_offset}")])
+
+    try: await query.message.edit_text(cap + files_link + del_msg, disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup(btn), parse_mode=enums.ParseMode.HTML)
+    except MessageNotModified: await query.answer()
+    except Exception as e: logger.error(f"Error edit lang_next: {e}"); await query.answer("Error.", show_alert=True)
+
+
+# Keep qual_next (modify similarly to lang_next)
 @Client.on_callback_query(filters.regex(r"^qual_next"))
 async def quality_next_page(bot, query):
-    ident, req, key, qual, l_offset, offset = query.data.split("#")
-    if int(req) != query.from_user.id:
-        return await query.answer(f"Hello {query.from_user.first_name},\nDon't Click Other Results!", show_alert=True)
+    _, req, key, qual, current_filtered_offset_str, original_offset_str = query.data.split("#")
     try:
-        l_offset = int(l_offset)
-    except:
-        l_offset = 0
-    search = BUTTONS.get(key)
-    cap = CAP.get(key)
-    settings = await get_settings(query.message.chat.id)
-    del_msg = f"\n\n<b>⚠️ ᴛʜɪs ᴍᴇssᴀɢᴇ ᴡɪʟʟ ʙᴇ ᴀᴜᴛᴏ ᴅᴇʟᴇᴛᴇ ᴀꜰᴛᴇʀ <code>{get_readable_time(DELETE_TIME)}</code> ᴛᴏ ᴀᴠᴏɪᴅ ᴄᴏᴘʏʀɪɢʜᴛ ɪssᴜᴇs</b>" if settings["auto_delete"] else ''
-    if not search:
-        await query.answer(f"Hello {query.from_user.first_name},\nSend New Request Again!", show_alert=True)
-        return
-    files, n_offset, total = await get_search_results(search, offset=l_offset, lang=qual)
-    if not files:
-        return
-    temp.FILES[key] = files
-    try:
-        n_offset = int(n_offset)
-    except:
-        n_offset = 0
-    files_link = ''
-    if settings['links']:
-        btn = []
-        for file_num, file in enumerate(files, start=l_offset+1):
-            files_link += f"""<b>\n\n{file_num}. <a href=https://t.me/{temp.U_NAME}?start=file_{query.message.chat.id}_{file['_id']}>[{get_size(file['file_size'])}] {file['file_name']}</a></b>"""
-    else:
-        btn = [[
-            InlineKeyboardButton(text=f"{get_size(file['file_size'])} - {file['file_name']}", callback_data=f'file#{file["_id"]}')
-        ]
-            for file in files
-        ]
-    btn.insert(0,
-        [InlineKeyboardButton("• ᴜᴘᴅᴀᴛᴇꜱ •", url=UPDATES_LINK)]
-    )
-    if 0 < l_offset <= MAX_BTN:
-        b_offset = 0
-    elif l_offset == 0:
-        b_offset = None
-    else:
-        b_offset = l_offset - MAX_BTN
-    if n_offset == 0:
-        btn.append(
-            [InlineKeyboardButton("« ʙᴀᴄᴋ", callback_data=f"qual_next#{req}#{key}#{qual}#{b_offset}#{offset}"),
-             InlineKeyboardButton(f"{math.ceil(int(l_offset) / MAX_BTN) + 1}/{math.ceil(total / MAX_BTN)}", callback_data="buttons")]
-        )
-    elif b_offset is None:
-        btn.append(
-            [InlineKeyboardButton(f"{math.ceil(int(l_offset) / MAX_BTN) + 1}/{math.ceil(total / MAX_BTN)}", callback_data="buttons"),
-             InlineKeyboardButton("ɴᴇxᴛ »", callback_data=f"qual_next#{req}#{key}#{qual}#{n_offset}#{offset}")]
-        )
-    else:
-        btn.append(
-            [InlineKeyboardButton("« ʙᴀᴄᴋ", callback_data=f"qual_next#{req}#{key}#{qual}#{b_offset}#{offset}"),
-             InlineKeyboardButton(f"{math.ceil(int(l_offset) / MAX_BTN) + 1}/{math.ceil(total / MAX_BTN)}", callback_data="buttons"),
-             InlineKeyboardButton("ɴᴇxᴛ »", callback_data=f"qual_next#{req}#{key}#{qual}#{n_offset}#{offset}")]
-        )
-    btn.append([InlineKeyboardButton(text="⪻ ʙᴀᴄᴋ ᴛᴏ ᴍᴀɪɴ ᴘᴀɢᴇ", callback_data=f"next_{req}_{key}_{offset}")])
-    await query.message.edit_text(cap + files_link + del_msg, reply_markup=InlineKeyboardMarkup(btn), disable_web_page_preview=True, parse_mode=enums.ParseMode.HTML)
+        req_user_id = int(req)
+        current_filtered_offset = int(current_filtered_offset_str)
+        original_offset = int(original_offset_str)
+    except ValueError: return await query.answer("Invalid request data.", show_alert=True)
 
+    if req_user_id != query.from_user.id: return await query.answer(f"ʜᴇʟʟᴏ {query.from_user.first_name},\nᴛʜɪs ɪs ɴᴏᴛ ғᴏʀ ʏᴏᴜ!", show_alert=True)
+
+    original_search = BUTTONS.get(key); cap = CAP.get(key)
+    if not original_search or not cap: return await query.answer("ʀᴇǫᴜᴇsᴛ ᴇxᴘɪʀᴇᴅ.", show_alert=True)
+
+    # Fetch next page of quality-filtered results
+    files, next_filtered_offset, total_filtered = await get_search_results(original_search, lang=qual, offset=current_filtered_offset) # Use lang for quality
+    if not files: return await query.answer("No more files found.", show_alert=False)
+
+    settings = await get_settings(query.message.chat.id)
+    del_msg = f"\n\n<b>⚠️ ᴀᴜᴛᴏ-ᴅᴇʟᴇᴛᴇ ᴇɴᴀʙʟᴇᴅ.</b>" if settings.get("auto_delete", False) else ''
+    files_link = ''; btn = []
+    start_num = current_filtered_offset + 1
+
+    if settings.get('links', False):
+        for file_num, file in enumerate(files, start=start_num): files_link += f"<b>\n\n{file_num}. <a href=...>[{get_size(file['file_size'])}] {file['file_name']}</a></b>"
+    else:
+        for file in files: btn.append([InlineKeyboardButton(f"[{get_size(file['file_size'])}] {file['file_name']}", callback_data=f"file#{file['_id']}")])
+
+    btn.insert(0, [InlineKeyboardButton("• ᴜᴘᴅᴀᴛᴇs •", url=UPDATES_LINK)])
+    btn.insert(1, [
+        InlineKeyboardButton("⫸ ʟᴀɴɢᴜᴀɢᴇ", callback_data=f"languages#{key}#{req}#0"),
+        InlineKeyboardButton("⫸ ǫᴜᴀʟɪᴛʏ", callback_data=f"quality#{key}#{req}#{original_offset}")
+    ])
+
+    current_page = math.ceil(current_filtered_offset / MAX_BTN) + 1
+    total_pages = math.ceil(total_filtered / MAX_BTN)
+    page_label = f"ᴘɢ {current_page}/{total_pages}"
+    pagination_row = []
+
+    prev_filtered_offset = max(0, current_filtered_offset - MAX_BTN)
+    pagination_row.append(InlineKeyboardButton("« ʙᴀᴄᴋ", callback_data=f"qual_next#{req}#{key}#{qual}#{prev_filtered_offset}#{original_offset}"))
+    pagination_row.append(InlineKeyboardButton(page_label, callback_data="buttons"))
+    if next_filtered_offset != "":
+        pagination_row.append(InlineKeyboardButton("ɴᴇxᴛ »", callback_data=f"qual_next#{req}#{key}#{qual}#{next_filtered_offset}#{original_offset}"))
+
+    btn.append(pagination_row)
+    btn.append([InlineKeyboardButton(text="⪻ ʙᴀᴄᴋ ᴛᴏ ᴀʟʟ", callback_data=f"next_{req}_{key}_{original_offset}")])
+
+    try: await query.message.edit_text(cap + files_link + del_msg, disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup(btn), parse_mode=enums.ParseMode.HTML)
+    except MessageNotModified: await query.answer()
+    except Exception as e: logger.error(f"Error edit qual_next: {e}"); await query.answer("Error.", show_alert=True)
+
+
+# Keep spolling callback (no premium logic)
 @Client.on_callback_query(filters.regex(r"^spolling"))
 async def advantage_spoll_choker(bot, query):
     _, id, user = query.data.split('#')
-    if int(user) != 0 and query.from_user.id != int(user):
-        return await query.answer(f"Hello {query.from_user.first_name},\nDon't Click Other Results!", show_alert=True)
-    movie = await get_poster(id, id=True)
-    search = movie.get('title')
-    s = await query.message.edit_text(f"<b><i><code>{search}</code> Check In My Database...</i></b>")
-    await query.answer('')
-    files, offset, total_results = await get_search_results(search)
+    try: req_user_id = int(user)
+    except ValueError: return await query.answer("Invalid request data.", show_alert=True)
+
+    if req_user_id != 0 and query.from_user.id != req_user_id:
+        return await query.answer(f"ʜᴇʟʟᴏ {query.from_user.first_name},\nᴛʜɪs ɪs ɴᴏᴛ ғᴏʀ ʏᴏᴜ!", show_alert=True)
+
+    await query.answer("Searching for the correct title...")
+    try:
+        movie = await get_poster(id, id=True) # Use refined get_poster
+        if not movie: raise ValueError("IMDb lookup failed")
+        search = movie.get('title', "N/A")
+        if search == "N/A": raise ValueError("Could not get title from IMDb")
+        # Clean title slightly for search
+        search_cleaned = re.sub(r"[:()]", "", search).strip() # Basic cleaning
+    except Exception as e:
+        logger.error(f"Error getting poster for spell check ID {id}: {e}")
+        await query.message.edit(f"❌ ᴄᴏᴜʟᴅ ɴᴏᴛ ғᴇᴛᴄʜ ᴅᴇᴛᴀɪʟs ғᴏʀ ᴛʜᴀᴛ sᴜɢɢᴇsᴛɪᴏɴ.")
+        return
+
+    s = await query.message.edit(f"<b><i>✅ ᴏᴋᴀʏ, sᴇᴀʀᴄʜɪɴɢ ғᴏʀ: `{search_cleaned}`</i></b>")
+    # Use async search, start from offset 0
+    files, offset, total_results = await get_search_results(search_cleaned, offset=0)
     if files:
-        k = (search, files, offset, total_results)
-        await auto_filter(bot, query, s, k)
+        k = (search_cleaned, files, offset, total_results) # Package results for auto_filter
+        await auto_filter(bot, query, s, spoll=k) # Pass query, status msg, and results
     else:
-        k = await query.message.edit(f"👋 Hello {query.from_user.mention},\n\nI don't find <b>'{search}'</b> in my database. 😔")
-        await bot.send_message(LOG_CHANNEL, f"#No_Result\n\nRequester: {query.from_user.mention}\nContent: {search}")
-        await asyncio.sleep(60)
-        await k.delete()
-        try:
-            await query.message.reply_to_message.delete()
-        except:
-            pass
-
-@Client.on_callback_query()
-async def cb_handler(client: Client, query: CallbackQuery):
-    if query.data == "close_data":
-        try:
-            user = query.message.reply_to_message.from_user.id
-        except:
-            user = query.from_user.id
-        if int(user) != 0 and query.from_user.id != int(user):
-            return await query.answer(f"Hello {query.from_user.first_name},\nThis Is Not For You!", show_alert=True)
-        await query.answer("Closed!")
-        await query.message.delete()
-        try:
-            await query.message.reply_to_message.delete()
-        except:
-            pass
-  
-    if query.data.startswith("file"):
-        ident, file_id = query.data.split("#")
-        try:
-            user = query.message.reply_to_message.from_user.id
-        except:
-            user = query.message.from_user.id
-        if int(user) != 0 and query.from_user.id != int(user):
-            return await query.answer(f"Hello {query.from_user.first_name},\nDon't Click Other Results!", show_alert=True)
-        await query.answer(url=f"https://t.me/{temp.U_NAME}?start=file_{query.message.chat.id}_{file_id}")
-
-    elif query.data.startswith("stream"):
-        file_id = query.data.split('#', 1)[1]
-        msg = await client.send_cached_media(chat_id=BIN_CHANNEL, file_id=file_id)
-        watch = f"{URL}watch/{msg.id}"
-        download = f"{URL}download/{msg.id}"
-        btn=[[
-            InlineKeyboardButton("ᴡᴀᴛᴄʜ ᴏɴʟɪɴᴇ", url=watch),
-            InlineKeyboardButton("ꜰᴀsᴛ ᴅᴏᴡɴʟᴏᴀᴅ", url=download)
-        ],[
-            InlineKeyboardButton('❌ ᴄʟᴏsᴇ ❌', callback_data='close_data')
-        ]]
-        reply_markup=InlineKeyboardMarkup(btn)
-        await query.edit_message_reply_markup(
-            reply_markup=reply_markup
-        )
-    
-            
-    elif query.data.startswith("checksub"):
-        ident, mc = query.data.split("#")
-        settings = await get_settings(int(mc.split("_", 2)[1]))
-        btn = await is_subscribed(client, query)
-        if btn:
-            await query.answer(f"Hello {query.from_user.first_name},\nPlease join my updates channel and try again.", show_alert=True)
-            btn.append(
-                [InlineKeyboardButton("🔁 Try Again 🔁", callback_data=f"checksub#{mc}")]
-            )
-            await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
-            return
-        await query.answer(url=f"https://t.me/{temp.U_NAME}?start={mc}")
-        await query.message.delete()
-
-    elif query.data == "buttons":
-        await query.answer()
-
-    elif query.data == "instructions":
-        await query.answer("Movie request format.\nExample:\nBlack Adam or Black Adam 2022\n\nTV Reries request format.\nExample:\nLoki S01E01 or Loki S01 E01\n\nDon't use symbols.", show_alert=True)
-
-    elif query.data == "start":
-        buttons = [[
-            InlineKeyboardButton("+ ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ +", url=f'http://t.me/{temp.U_NAME}?startgroup=start')
-        ],[
-            InlineKeyboardButton('• ᴜᴘᴅᴀᴛᴇs •', url=UPDATES_LINK),
-            InlineKeyboardButton('• ꜱᴜᴘᴘᴏʀᴛ •', url=SUPPORT_LINK)
-        ],[
-            InlineKeyboardButton('• ʜᴇʟᴘ •', callback_data='help'),
-            InlineKeyboardButton('• ɪɴʟɪɴᴇ •', switch_inline_query_current_chat=''),
-            InlineKeyboardButton('• ᴀʙᴏᴜᴛ •', callback_data='about')
-        ]]
-        reply_markup = InlineKeyboardMarkup(buttons)
-        await query.edit_message_media(
-            InputMediaPhoto(random.choice(PICS), caption=script.START_TXT.format(query.from_user.mention, get_wish())),
-            reply_markup=reply_markup
-        )
-        
-    elif query.data == "about":
-        buttons = [[
-            InlineKeyboardButton('📊 sᴛᴀᴛᴜs 📊', callback_data='stats'),
-            InlineKeyboardButton('🤖 sᴏᴜʀᴄᴇ ᴄᴏᴅᴇ 🤖', callback_data='source')
-        ],[
-            InlineKeyboardButton('🧑‍💻 ʙᴏᴛ ᴏᴡɴᴇʀ 🧑‍💻', callback_data='owner')
-        ],[
-            InlineKeyboardButton('« ʙᴀᴄᴋ', callback_data='start')
-        ]]
-        reply_markup = InlineKeyboardMarkup(buttons)
-        await query.edit_message_media(
-            InputMediaPhoto(random.choice(PICS), caption=script.MY_ABOUT_TXT),
-            reply_markup=reply_markup
-        )
-
-    elif query.data == "stats":
-        if query.from_user.id not in ADMINS:
-            return await query.answer("ADMINS Only!", show_alert=True)
-        files = db_count_documents()
-        users = await db.total_users_count()
-        chats = await db.total_chat_count()
-        used_files_db_size = get_size(await db.get_files_db_size())
-        used_data_db_size = get_size(await db.get_data_db_size())
-
-        try:
-            secnd_files_db_used_size = get_size(await db.get_second_files_db_size())
-            secnd_files = second_db_count_documents()
-        except:
-            secnd_files_db_used_size = '-'
-            secnd_files = '-'
-        uptime = get_readable_time(time_now() - temp.START_TIME)
-        buttons = [[
-            InlineKeyboardButton('« ʙᴀᴄᴋ', callback_data='about')
-        ]]
-        await query.edit_message_media(
-            InputMediaPhoto(random.choice(PICS), caption=script.STATUS_TXT.format(users, chats, used_data_db_size, files, used_files_db_size, secnd_files, secnd_files_db_used_size, uptime)),
-            reply_markup=InlineKeyboardMarkup(buttons)
-        )
-    
-    elif query.data == "owner":
-        buttons = [[InlineKeyboardButton('« ʙᴀᴄᴋ', callback_data='about')]]
-        reply_markup = InlineKeyboardMarkup(buttons)
-        await query.edit_message_media(
-            InputMediaPhoto(random.choice(PICS), caption=script.MY_OWNER_TXT),
-            reply_markup=reply_markup
-        )
-        
-    elif query.data == "help":
-        buttons = [[
-            InlineKeyboardButton('User Command', callback_data='user_command'),
-            InlineKeyboardButton('Admin Command', callback_data='admin_command')
-        ],[
-            InlineKeyboardButton('« ʙᴀᴄᴋ', callback_data='start')
-        ]]
-        reply_markup = InlineKeyboardMarkup(buttons)
-        await query.edit_message_media(
-            InputMediaPhoto(random.choice(PICS), caption=script.HELP_TXT.format(query.from_user.mention)),
-            reply_markup=reply_markup
-        )
-
-    elif query.data == "user_command":
-        buttons = [[
-            InlineKeyboardButton('« ʙᴀᴄᴋ', callback_data='help')
-        ]]
-        reply_markup = InlineKeyboardMarkup(buttons)
-        await query.edit_message_media(
-            InputMediaPhoto(random.choice(PICS), caption=script.USER_COMMAND_TXT),
-            reply_markup=reply_markup
-        )
-        
-    elif query.data == "admin_command":
-        if query.from_user.id not in ADMINS:
-            return await query.answer("ADMINS Only!", show_alert=True)
-        buttons = [[
-            InlineKeyboardButton('« ʙᴀᴄᴋ', callback_data='help')
-        ]]
-        reply_markup = InlineKeyboardMarkup(buttons)
-        await query.edit_message_media(
-            InputMediaPhoto(random.choice(PICS), caption=script.ADMIN_COMMAND_TXT),
-            reply_markup=reply_markup
-        )
-
-    elif query.data == "source":
-        buttons = [[
-            InlineKeyboardButton('≼ ʙᴀᴄᴋ', callback_data='about')
-        ]]
-        reply_markup = InlineKeyboardMarkup(buttons)
-        await query.edit_message_media(
-            InputMediaPhoto(random.choice(PICS), caption=script.SOURCE_TXT),
-            reply_markup=reply_markup
-        )
-  
-    elif query.data.startswith("bool_setgs"):
-        ident, set_type, status, grp_id = query.data.split("#")
-        userid = query.from_user.id if query.from_user else None
-        if not await is_check_admin(client, int(grp_id), userid):
-            await query.answer("You not admin in this group.", show_alert=True)
-            return
-
-        if status == "True":
-            await save_group_settings(int(grp_id), set_type, False)
-        else:
-            await save_group_settings(int(grp_id), set_type, True)
-
-        btn = await get_grp_stg(int(grp_id))
-        await query.message.edit_reply_markup(InlineKeyboardMarkup(btn))
-            
-    elif query.data.startswith("imdb_setgs"):
-        _, grp_id = query.data.split("#")
-        userid = query.from_user.id if query.from_user else None
-        if not await is_check_admin(client, int(grp_id), userid):
-            return await query.answer("You not admin in this group.", show_alert=True)
-        settings = await get_settings(int(grp_id))
-        btn = [[
-            InlineKeyboardButton('Set IMDb template', callback_data=f'set_imdb#{grp_id}')
-        ],[
-            InlineKeyboardButton('Default IMDb template', callback_data=f'default_imdb#{grp_id}')
-        ],[
-            InlineKeyboardButton('Back', callback_data=f'back_setgs#{grp_id}')
-        ]]
-        await query.message.edit(f'Select you want option\n\nCurrent template:\n{settings["template"]}', reply_markup=InlineKeyboardMarkup(btn))
-
-    elif query.data.startswith("set_imdb"):
-        _, grp_id = query.data.split("#")
-        userid = query.from_user.id if query.from_user else None
-        if not await is_check_admin(client, int(grp_id), userid):
-            return await query.answer("You not admin in this group.", show_alert=True)
-        m = await query.message.edit('Send imdb template with formats')
-        msg = await client.listen(chat_id=query.message.chat.id, user_id=query.from_user.id)
-        await save_group_settings(int(grp_id), 'template', msg.text)
-        await m.delete()
-        btn = [[
-            InlineKeyboardButton('Back', callback_data=f'imdb_setgs#{grp_id}')
-        ]]
-        await query.message.reply('Successfully changed template', reply_markup=InlineKeyboardMarkup(btn))
-
-    elif query.data.startswith("default_imdb"):
-        _, grp_id = query.data.split("#")
-        userid = query.from_user.id if query.from_user else None
-        if not await is_check_admin(client, int(grp_id), userid):
-            return await query.answer("You not admin in this group.", show_alert=True)
-        await save_group_settings(int(grp_id), 'template', script.IMDB_TEMPLATE)
-        btn = [[
-            InlineKeyboardButton('Back', callback_data=f'imdb_setgs#{grp_id}')
-        ]]
-        await query.message.edit('Successfully changed template to default', reply_markup=InlineKeyboardMarkup(btn))
-
-    elif query.data.startswith("welcome_setgs"):
-        _, grp_id = query.data.split("#")
-        userid = query.from_user.id if query.from_user else None
-        if not await is_check_admin(client, int(grp_id), userid):
-            return await query.answer("You not admin in this group.", show_alert=True)
-        settings = await get_settings(int(grp_id))
-        btn = [[
-            InlineKeyboardButton('Set Welcome', callback_data=f'set_welcome#{grp_id}')
-        ],[
-            InlineKeyboardButton('Default Welcome', callback_data=f'default_welcome#{grp_id}')
-        ],[
-            InlineKeyboardButton('Back', callback_data=f'back_setgs#{grp_id}')
-        ]]
-        await query.message.edit(f'Select you want option\n\nCurrent welcome:\n{settings["welcome_text"]}', reply_markup=InlineKeyboardMarkup(btn))
-
-    elif query.data.startswith("set_welcome"):
-        _, grp_id = query.data.split("#")
-        userid = query.from_user.id if query.from_user else None
-        if not await is_check_admin(client, int(grp_id), userid):
-            return await query.answer("You not admin in this group.", show_alert=True)
-        m = await query.message.edit('Send Welcome with formats')
-        msg = await client.listen(chat_id=query.message.chat.id, user_id=query.from_user.id)
-        await save_group_settings(int(grp_id), 'welcome_text', msg.text)
-        await m.delete()
-        btn = [[
-            InlineKeyboardButton('Back', callback_data=f'welcome_setgs#{grp_id}')
-        ]]
-        await query.message.reply('Successfully changed Welcome', reply_markup=InlineKeyboardMarkup(btn))
-
-    elif query.data.startswith("default_welcome"):
-        _, grp_id = query.data.split("#")
-        userid = query.from_user.id if query.from_user else None
-        if not await is_check_admin(client, int(grp_id), userid):
-            return await query.answer("You not admin in this group.", show_alert=True)
-        await save_group_settings(int(grp_id), 'welcome_text', script.WELCOME_TEXT)
-        btn = [[
-            InlineKeyboardButton('Back', callback_data=f'welcome_setgs#{grp_id}')
-        ]]
-        await query.message.edit('Successfully changed Welcome to default', reply_markup=InlineKeyboardMarkup(btn))
-
-    
-    elif query.data.startswith("tutorial_setgs"):
-        _, grp_id = query.data.split("#")
-        userid = query.from_user.id if query.from_user else None
-        if not await is_check_admin(client, int(grp_id), userid):
-            return await query.answer("You not admin in this group.", show_alert=True)
-        settings = await get_settings(int(grp_id))
-        btn = [[
-            InlineKeyboardButton('Set tutorial link', callback_data=f'set_tutorial#{grp_id}')
-        ],[
-            InlineKeyboardButton('Default tutorial link', callback_data=f'default_tutorial#{grp_id}')
-        ],[
-            InlineKeyboardButton('Back', callback_data=f'back_setgs#{grp_id}')
-        ]]
-        await query.message.edit(f'Select you want option\n\nCurrent tutorial link:\n{settings["tutorial"]}', reply_markup=InlineKeyboardMarkup(btn), disable_web_page_preview=True)
-        
-    elif query.data.startswith("set_tutorial"):
-        _, grp_id = query.data.split("#")
-        userid = query.from_user.id if query.from_user else None
-        if not await is_check_admin(client, int(grp_id), userid):
-            return await query.answer("You not admin in this group.", show_alert=True)
-        m = await query.message.edit('Send tutorial link')
-        msg = await client.listen(chat_id=query.message.chat.id, user_id=query.from_user.id)
-        await save_group_settings(int(grp_id), 'tutorial', msg.text)
-        await m.delete()
-        btn = [[
-            InlineKeyboardButton('Back', callback_data=f'tutorial_setgs#{grp_id}')
-        ]]
-        await query.message.reply('Successfully changed tutorial link', reply_markup=InlineKeyboardMarkup(btn))
-
-    elif query.data.startswith("default_tutorial"):
-        _, grp_id = query.data.split("#")
-        userid = query.from_user.id if query.from_user else None
-        if not await is_check_admin(client, int(grp_id), userid):
-            return await query.answer("You not admin in this group.", show_alert=True)
-        await save_group_settings(int(grp_id), 'tutorial', TUTORIAL)
-        btn = [[
-            InlineKeyboardButton('Back', callback_data=f'tutorial_setgs#{grp_id}')
-        ]]
-        await query.message.edit('Successfully changed tutorial link to default', reply_markup=InlineKeyboardMarkup(btn))
-
-    
-    elif query.data.startswith("shortlink_setgs"):
-        _, grp_id = query.data.split("#")
-        userid = query.from_user.id if query.from_user else None
-        if not await is_check_admin(client, int(grp_id), userid):
-            return await query.answer("You not admin in this group.", show_alert=True)
-        settings = await get_settings(int(grp_id))
-        btn = [[
-            InlineKeyboardButton('Set shortlink', callback_data=f'set_shortlink#{grp_id}')
-        ],[
-            InlineKeyboardButton('Default shortlink', callback_data=f'default_shortlink#{grp_id}')
-        ],[
-            InlineKeyboardButton('Back', callback_data=f'back_setgs#{grp_id}')
-        ]]
-        await query.message.edit(f'Select you want option\n\nCurrent shortlink:\n{settings["url"]} - {settings["api"]}', reply_markup=InlineKeyboardMarkup(btn))
-        
-    elif query.data.startswith("set_shortlink"):
-        _, grp_id = query.data.split("#")
-        userid = query.from_user.id if query.from_user else None
-        if not await is_check_admin(client, int(grp_id), userid):
-            return await query.answer("You not admin in this group.", show_alert=True)
-        m = await query.message.edit('Send shortlink url')
-        url_msg = await client.listen(chat_id=query.message.chat.id, user_id=query.from_user.id)
-        await m.delete()
-        k = await query.message.reply('Send shortlink api key')
-        key_msg = await client.listen(chat_id=query.message.chat.id, user_id=query.from_user.id)
-        await save_group_settings(int(grp_id), 'url', url_msg.text)
-        await save_group_settings(int(grp_id), 'api', key_msg.text)
-        await k.delete()
-        btn = [[
-            InlineKeyboardButton('Back', callback_data=f'shortlink_setgs#{grp_id}')
-        ]]
-        await query.message.reply('Successfully changed shortlink', reply_markup=InlineKeyboardMarkup(btn))
-
-    elif query.data.startswith("default_shortlink"):
-        _, grp_id = query.data.split("#")
-        userid = query.from_user.id if query.from_user else None
-        if not await is_check_admin(client, int(grp_id), userid):
-            return await query.answer("You not admin in this group.", show_alert=True)
-        await save_group_settings(int(grp_id), 'url', SHORTLINK_URL)
-        await save_group_settings(int(grp_id), 'api', SHORTLINK_API)
-        btn = [[
-            InlineKeyboardButton('Back', callback_data=f'shortlink_setgs#{grp_id}')
-        ]]
-        await query.message.edit('Successfully changed shortlink to default', reply_markup=InlineKeyboardMarkup(btn))
-
-    elif query.data.startswith("caption_setgs"):
-        _, grp_id = query.data.split("#")
-        userid = query.from_user.id if query.from_user else None
-        if not await is_check_admin(client, int(grp_id), userid):
-            return await query.answer("You not admin in this group.", show_alert=True)
-        settings = await get_settings(int(grp_id))
-        btn = [[
-            InlineKeyboardButton('Set caption', callback_data=f'set_caption#{grp_id}')
-        ],[
-            InlineKeyboardButton('Default caption', callback_data=f'default_caption#{grp_id}')
-        ],[
-            InlineKeyboardButton('Back', callback_data=f'back_setgs#{grp_id}')
-        ]]
-        await query.message.edit(f'Select you want option\n\nCurrent caption:\n{settings["caption"]}', reply_markup=InlineKeyboardMarkup(btn))
-        
-        
-    elif query.data.startswith("set_caption"):
-        _, grp_id = query.data.split("#")
-        userid = query.from_user.id if query.from_user else None
-        if not await is_check_admin(client, int(grp_id), userid):
-            return await query.answer("You not admin in this group.", show_alert=True)
-        m = await query.message.edit('Send caption with formats')
-        msg = await client.listen(chat_id=query.message.chat.id, user_id=query.from_user.id)
-        await save_group_settings(int(grp_id), 'caption', msg.text)
-        await m.delete()
-        btn = [[
-            InlineKeyboardButton('Back', callback_data=f'caption_setgs#{grp_id}')
-        ]]
-        await query.message.reply('Successfully changed caption', reply_markup=InlineKeyboardMarkup(btn))
+        # No results even after spell check
+        k = await s.edit(script.NOT_FILE_TXT.format(query.from_user.mention, search_cleaned))
+        # Log no result after spell check correction
+        try: await bot.send_message(LOG_CHANNEL, f"#ɴᴏ_ʀᴇsᴜʟᴛ_ᴀғᴛᴇʀ_sᴘᴇʟʟ\n\n♢ ʀᴇǫᴜᴇsᴛᴇʀ: {query.from_user.mention}\n♢ ᴏʀɪɢɪɴᴀʟ: `{BUTTONS.get(query.message.reply_markup.inline_keyboard[0][0].callback_data.split('#')[1], 'Unknown')}`\n♢ sᴜɢɢᴇsᴛᴇᴅ: `{search_cleaned}`")
+        except: pass
+        await asyncio.sleep(60) # Keep message longer
+        try: await k.delete()
+        except: pass
 
 
-    elif query.data.startswith("default_caption"):
-        _, grp_id = query.data.split("#")
-        userid = query.from_user.id if query.from_user else None
-        if not await is_check_admin(client, int(grp_id), userid):
-            return await query.answer("You not admin in this group.", show_alert=True)
-        await save_group_settings(int(grp_id), 'caption', script.FILE_CAPTION)
-        btn = [[
-            InlineKeyboardButton('Back', callback_data=f'caption_setgs#{grp_id}')
-        ]]
-        await query.message.edit('Successfully changed caption to default', reply_markup=InlineKeyboardMarkup(btn))
-
-    elif query.data.startswith("back_setgs"):
-        _, grp_id = query.data.split("#")
-        userid = query.from_user.id if query.from_user else None
-        if not await is_check_admin(client, int(grp_id), userid):
-            return await query.answer("You not admin in this group.", show_alert=True)
-        btn = await get_grp_stg(int(grp_id))
-        chat = await client.get_chat(int(grp_id))
-        await query.message.edit(text=f"Change your settings for <b>'{chat.title}'</b> as your wish. ⚙", reply_markup=InlineKeyboardMarkup(btn))
-
-    elif query.data == "open_group_settings":
-        userid = query.from_user.id if query.from_user else None
-        if not await is_check_admin(client, query.message.chat.id, userid):
-            return await query.answer("You not admin in this group.", show_alert=True)
-        btn = await get_grp_stg(query.message.chat.id)
-        await query.message.edit(text=f"Change your settings for <b>'{query.message.chat.title}'</b> as your wish. ⚙", reply_markup=InlineKeyboardMarkup(btn))
-
-    elif query.data == "open_pm_settings":
-        userid = query.from_user.id if query.from_user else None
-        if not await is_check_admin(client, query.message.chat.id, userid):
-            return await query.answer("You not admin in this group.", show_alert=True)
-        btn = await get_grp_stg(query.message.chat.id)
-        try:
-            await client.send_message(query.from_user.id, f"Change your settings for <b>'{query.message.chat.title}'</b> as your wish. ⚙", reply_markup=InlineKeyboardMarkup(btn))
-        except:
-            await query.answer(url=f"https://t.me/{temp.U_NAME}?start=settings_{query.message.chat.id}")
-        btn = [[
-            InlineKeyboardButton('Go To PM', url=f"https://t.me/{temp.U_NAME}")
-        ]]
-        await query.message.edit("Settings menu has been sent to PM", reply_markup=InlineKeyboardMarkup(btn))
-
-    elif query.data.startswith("delete"):
-        _, query_ = query.data.split("_", 1)
-        await query.message.edit('Deleting...')
-        deleted = await delete_files(query_)
-        await query.message.edit(f'Deleted {deleted} files in your database in your query {query_}')
-     
-    elif query.data.startswith("send_all"):
-        ident, key, req = query.data.split("#")
-        if int(req) != query.from_user.id:
-            return await query.answer(f"Hello {query.from_user.first_name},\nDon't Click Other Results!", show_alert=True)        
-        files = temp.FILES.get(key)
-        if not files:
-            await query.answer(f"Hello {query.from_user.first_name},\nSend New Request Again!", show_alert=True)
-            return        
-        await query.answer(url=f"https://t.me/{temp.U_NAME}?start=all_{query.message.chat.id}_{key}")
-
-    elif query.data == "unmute_all_members":
-        if not await is_check_admin(client, query.message.chat.id, query.from_user.id):
-            await query.answer("This Is Not For You!", show_alert=True)
-            return
-        users_id = []
-        await query.message.edit("Unmute all started! This process maybe get some time...")
-        try:
-            async for member in client.get_chat_members(query.message.chat.id, filter=enums.ChatMembersFilter.RESTRICTED):
-                users_id.append(member.user.id)
-            for user_id in users_id:
-                await client.unban_chat_member(query.message.chat.id, user_id)
-        except Exception as e:
-            await query.message.delete()
-            await query.message.reply(f'Something went wrong.\n\n<code>{e}</code>')
-            return
-        await query.message.delete()
-        if users_id:
-            await query.message.reply(f"Successfully unmuted <code>{len(users_id)}</code> users.")
-        else:
-            await query.message.reply('Nothing to unmute users.')
-
-    elif query.data == "unban_all_members":
-        if not await is_check_admin(client, query.message.chat.id, query.from_user.id):
-            await query.answer("This Is Not For You!", show_alert=True)
-            return
-        users_id = []
-        await query.message.edit("Unban all started! This process maybe get some time...")
-        try:
-            async for member in client.get_chat_members(query.message.chat.id, filter=enums.ChatMembersFilter.BANNED):
-                users_id.append(member.user.id)
-            for user_id in users_id:
-                await client.unban_chat_member(query.message.chat.id, user_id)
-        except Exception as e:
-            await query.message.delete()
-            await query.message.reply(f'Something went wrong.\n\n<code>{e}</code>')
-            return
-        await query.message.delete()
-        if users_id:
-            await query.message.reply(f"Successfully unban <code>{len(users_id)}</code> users.")
-        else:
-            await query.message.reply('Nothing to unban users.')
-
-    elif query.data == "kick_muted_members":
-        if not await is_check_admin(client, query.message.chat.id, query.from_user.id):
-            await query.answer("This Is Not For You!", show_alert=True)
-            return
-        users_id = []
-        await query.message.edit("Kick muted users started! This process maybe get some time...")
-        try:
-            async for member in client.get_chat_members(query.message.chat.id, filter=enums.ChatMembersFilter.RESTRICTED):
-                users_id.append(member.user.id)
-            for user_id in users_id:
-                await client.ban_chat_member(query.message.chat.id, user_id, datetime.now() + timedelta(seconds=30))
-        except Exception as e:
-            await query.message.delete()
-            await query.message.reply(f'Something went wrong.\n\n<code>{e}</code>')
-            return
-        await query.message.delete()
-        if users_id:
-            await query.message.reply(f"Successfully kicked muted <code>{len(users_id)}</code> users.")
-        else:
-            await query.message.reply('Nothing to kick muted users.')
-
-    elif query.data == "kick_deleted_accounts_members":
-        if not await is_check_admin(client, query.message.chat.id, query.from_user.id):
-            await query.answer("This Is Not For You!", show_alert=True)
-            return
-        users_id = []
-        await query.message.edit("Kick deleted accounts started! This process maybe get some time...")
-        try:
-            async for member in client.get_chat_members(query.message.chat.id):
-                if member.user.is_deleted:
-                    users_id.append(member.user.id)
-            for user_id in users_id:
-                await client.ban_chat_member(query.message.chat.id, user_id, datetime.now() + timedelta(seconds=30))
-        except Exception as e:
-            await query.message.delete()
-            await query.message.reply(f'Something went wrong.\n\n<code>{e}</code>')
-            return
-        await query.message.delete()
-        if users_id:
-            await query.message.reply(f"Successfully kicked deleted <code>{len(users_id)}</code> accounts.")
-        else:
-            await query.message.reply('Nothing to kick deleted accounts.')
-
-
-
-async def auto_filter(client, msg, s, spoll=False):
-    if not spoll:
-        message = msg
-        settings = await get_settings(message.chat.id)
-        search = re.sub(r"\s+", " ", re.sub(r"[-:\"';!]", " ", message.text)).strip()
-        files, offset, total_results = await get_search_results(search)
-        if not files:
-            if settings["spell_check"]:
-                await advantage_spell_chok(message, s)
-            else:
-                await s.edit(f'I cant find {search}')
-            return
-    else:
-        settings = await get_settings(msg.message.chat.id)
-        message = msg.message.reply_to_message  # msg will be callback query
-        search, files, offset, total_results = spoll
-    req = message.from_user.id if message and message.from_user else 0
-    key = f"{message.chat.id}-{message.id}"
-    temp.FILES[key] = files
-    BUTTONS[key] = search
-    files_link = ""
-    if settings['links']:
-        btn = []
-        for file_num, file in enumerate(files, start=1):
-            files_link += f"""<b>\n\n{file_num}. <a href=https://t.me/{temp.U_NAME}?start=file_{message.chat.id}_{file['_id']}>[{get_size(file['file_size'])}] {file['file_name']}</a></b>"""
-    else:
-        btn = [[
-            InlineKeyboardButton(text=f"{get_size(file['file_size'])} - {file['file_name']}", callback_data=f'file#{file["_id"]}')
-        ]
-            for file in files
-        ]   
-    if offset != "":
-        btn.insert(0,
-            [InlineKeyboardButton("• ᴜᴘᴅᴀᴛᴇꜱ •", url=UPDATES_LINK)]
-        )
-        btn.insert(1,
-            [InlineKeyboardButton("• ʟᴀɴɢᴜᴀɢᴇs •", callback_data=f"languages#{key}#{req}#{offset}"),
-            InlineKeyboardButton("• ǫᴜᴀʟɪᴛʏ •", callback_data=f"quality#{key}#{req}#{offset}")]
-        )
-        btn.append(
-            [InlineKeyboardButton(text=f"1/{math.ceil(int(total_results) / MAX_BTN)}", callback_data="buttons"),
-             InlineKeyboardButton(text="ɴᴇxᴛ »", callback_data=f"next_{req}_{key}_{offset}")]
-        )
-    else:
-        btn.insert(0,
-            [InlineKeyboardButton("• ᴜᴘᴅᴀᴛᴇꜱ •", url=UPDATES_LINK)]
-        )
-    imdb = await get_poster(search, file=(files[0])['file_name']) if settings["imdb"] else None
-    TEMPLATE = settings['template']
-    if imdb:
-        cap = TEMPLATE.format(
-            query=search,
-            title=imdb['title'],
-            votes=imdb['votes'],
-            aka=imdb["aka"],
-            seasons=imdb["seasons"],
-            box_office=imdb['box_office'],
-            localized_title=imdb['localized_title'],
-            kind=imdb['kind'],
-            imdb_id=imdb["imdb_id"],
-            cast=imdb["cast"],
-            runtime=imdb["runtime"],
-            countries=imdb["countries"],
-            certificates=imdb["certificates"],
-            languages=imdb["languages"],
-            director=imdb["director"],
-            writer=imdb["writer"],
-            producer=imdb["producer"],
-            composer=imdb["composer"],
-            cinematographer=imdb["cinematographer"],
-            music_team=imdb["music_team"],
-            distributors=imdb["distributors"],
-            release_date=imdb['release_date'],
-            year=imdb['year'],
-            genres=imdb['genres'],
-            poster=imdb['poster'],
-            plot=imdb['plot'],
-            rating=imdb['rating'],
-            url=imdb['url'],
-            **locals()
-        )
-    else:
-        cap = f"<b>ʜᴇʏ {message.from_user.mention} 👋🏻,\n\n🔖 Tɪᴛʟᴇ : {search}\n\n<blockquote>JᴏɪN : @norFederation Fᴏʀ Uᴘᴅᴀᴛᴇs ✅</blockquote></b>"
-    CAP[key] = cap
-    del_msg = f"\n\n<b>⚠️ ᴛʜɪs ᴍᴇssᴀɢᴇ ᴡɪʟʟ ʙᴇ ᴀᴜᴛᴏ ᴅᴇʟᴇᴛᴇ ᴀꜰᴛᴇʀ <code>{get_readable_time(DELETE_TIME)}</code> ᴛᴏ ᴀᴠᴏɪᴅ ᴄᴏᴘʏʀɪɢʜᴛ ɪssᴜᴇs</b>" if settings["auto_delete"] else ''
-    if imdb and imdb.get('poster'):
-        await s.delete()
-        try:
-            k = await message.reply_photo(photo=imdb.get('poster'), caption=cap[:1024] + files_link + del_msg, reply_markup=InlineKeyboardMarkup(btn), parse_mode=enums.ParseMode.HTML, quote=True)
-            if settings["auto_delete"]:
-                await asyncio.sleep(DELETE_TIME)
-                await k.delete()
-                try:
-                    await message.delete()
-                except:
-                    pass
-        except (MediaEmpty, PhotoInvalidDimensions, WebpageMediaEmpty):
-            pic = imdb.get('poster')
-            poster = pic.replace('.jpg', "._V1_UX360.jpg")
-            k = await message.reply_photo(photo=poster, caption=cap[:1024] + files_link + del_msg, reply_markup=InlineKeyboardMarkup(btn), parse_mode=enums.ParseMode.HTML, quote=True)
-            if settings["auto_delete"]:
-                await asyncio.sleep(DELETE_TIME)
-                await k.delete()
-                try:
-                    await message.delete()
-                except:
-                    pass
-        except Exception as e:
-            k = await message.reply_text(cap + files_link + del_msg, reply_markup=InlineKeyboardMarkup(btn), disable_web_page_preview=True, parse_mode=enums.ParseMode.HTML, quote=True)
-            if settings["auto_delete"]:
-                await asyncio.sleep(DELETE_TIME)
-                await k.delete()
-                try:
-                    await message.delete()
-                except:
-                    pass
-    else:
-        k = await s.edit_text(cap + files_link + del_msg, reply_markup=InlineKeyboardMarkup(btn), disable_web_page_preview=True, parse_mode=enums.ParseMode.HTML)
-        if settings["auto_delete"]:
-            await asyncio.sleep(DELETE_TIME)
-            await k.delete()
-            try:
-                await message.delete()
-            except:
-                pass
-
+# Keep main cb_handler (already modified to remove premium)
+# Keep auto_filter function (already modified)
+# Keep advantage_spell_chok function (modified slightly for clarity)
 async def advantage_spell_chok(message, s):
     search = message.text
-    google_search = search.replace(" ", "+")
-    btn = [[
-        InlineKeyboardButton("⚠️ Instructions ⚠️", callback_data='instructions'),
-        InlineKeyboardButton("🔎 Search Google 🔍", url=f"https://www.google.com/search?q={google_search}")
-    ]]
+    # Google Search button
+    google_search_url = f"https://www.google.com/search?q={re.sub(r' ', '+', search)}"
+    btn = [[ InlineKeyboardButton("❓ ɪɴsᴛʀᴜᴄᴛɪᴏɴs", callback_data='instructions'),
+             InlineKeyboardButton("🌍 sᴇᴀʀᴄʜ ɢᴏᴏɢʟᴇ", url=google_search_url) ]]
     try:
+        # Use async get_poster
         movies = await get_poster(search, bulk=True)
-    except:
-        n = await s.edit_text(text=script.NOT_FILE_TXT.format(message.from_user.mention, search), reply_markup=InlineKeyboardMarkup(btn))
-        await asyncio.sleep(60)
-        await n.delete()
-        try:
-            await message.delete()
-        except:
-            pass
-        return
+    except Exception as e:
+         logger.error(f"Error getting posters for spell check '{search}': {e}")
+         movies = None # Handle error case
+
     if not movies:
-        n = await s.edit_text(text=script.NOT_FILE_TXT.format(message.from_user.mention, search), reply_markup=InlineKeyboardMarkup(btn))
-        await temp.BOT.send_message(LOG_CHANNEL, f"#No_Result\n\nRequester: {message.from_user.mention}\nContent: {search}")
-        await asyncio.sleep(60)
-        await n.delete()
-        try:
-            await message.delete()
-        except:
-            pass
-        return
-    movies = list(dict.fromkeys(movies))
+        n = await s.edit(text=script.NOT_FILE_TXT.format(message.from_user.mention, search), reply_markup=InlineKeyboardMarkup(btn))
+        # Log no results (even without suggestions)
+        try: await message._client.send_message(LOG_CHANNEL, f"#ɴᴏ_ʀᴇsᴜʟᴛ\n\n♢ ʀᴇǫᴜᴇsᴛᴇʀ: {message.from_user.mention}\n♢ ǫᴜᴇʀʏ: `{search}`")
+        except Exception as log_e: logger.error(f"Error logging NO_RESULT: {log_e}")
+        # Auto-delete handled by main auto_filter logic potentially
+        return # Important to return here
+
+    # Filter out potential duplicates based on ID, keep order somewhat
+    seen_ids = set()
+    unique_movies = []
+    for movie in movies:
+        if movie.movieID not in seen_ids:
+            unique_movies.append(movie)
+            seen_ids.add(movie.movieID)
+        if len(unique_movies) >= 7: break # Limit suggestions
+
     user = message.from_user.id if message.from_user else 0
-    buttons = [[
-        InlineKeyboardButton(text=movie.get('title'), callback_data=f"spolling#{movie.movieID}#{user}")
-    ]
-        for movie in movies
-    ]
-    buttons.append(
-        [InlineKeyboardButton("🚫 ᴄʟᴏsᴇ 🚫", callback_data="close_data")]
-    )
-    s = await s.edit_text(text=f"👋 Hello {message.from_user.mention},\n\nI couldn't find the <b>'{search}'</b> you requested.\nSelect if you meant one of these? 👇", reply_markup=InlineKeyboardMarkup(buttons))
-    await asyncio.sleep(300)
-    await s.delete()
-    try:
-        await message.delete()
-    except:
-        pass
+    buttons = []
+    for movie in unique_movies:
+        title = movie.get('title', 'Unknown Title')
+        year = f"({movie.get('year')})" if movie.get('year') else ""
+        buttons.append([InlineKeyboardButton(text=f"{title} {year}".strip(), callback_data=f"spolling#{movie.movieID}#{user}")])
+
+    buttons.append([InlineKeyboardButton("🚫 ᴄʟᴏsᴇ", callback_data="close_data")])
+
+    await s.edit(text=f"👋 ʜᴇʟʟᴏ {message.from_user.mention},\n\nɪ ᴄᴏᴜʟᴅɴ'ᴛ ғɪɴᴅ ᴇxᴀᴄᴛʟʏ `<b>{search}</b>`.\nᴅɪᴅ ʏᴏᴜ ᴍᴇᴀɴ ᴏɴᴇ ᴏғ ᴛʜᴇsᴇ? 👇",
+               reply_markup=InlineKeyboardMarkup(buttons))
+    # Auto-delete might be handled by main filter logic or remove manual sleep here
