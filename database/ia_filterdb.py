@@ -27,15 +27,12 @@ second_collection = None
 try:
     client = MongoClient(FILES_DATABASE_URL)
     db = client[DATABASE_NAME]
-    # ** FIX: Check for db object correctly before getting collection **
     collection = db.get_collection(COLLECTION_NAME) if db is not None else None
     if collection is not None:
-        # ** FIX: Wrap index creation to handle quota errors **
         try:
             collection.create_index([("file_name", TEXT)], background=True)
         except OperationFailure as e:
             logger.critical(f"Primary DB Full! Couldn't create index: {e}")
-            # Bot will continue but searches might be slow.
     logger.info("Connected to Primary Files DB.")
 except Exception as e:
     logger.critical(f"Cannot connect to Primary Files DB: {e}", exc_info=True)
@@ -44,10 +41,8 @@ if SECOND_FILES_DATABASE_URL:
     try:
         second_client = MongoClient(SECOND_FILES_DATABASE_URL)
         second_db = second_client[DATABASE_NAME]
-        # ** FIX: Check for second_db object correctly **
         second_collection = second_db.get_collection(COLLECTION_NAME) if second_db is not None else None
         if second_collection is not None:
-            # ** FIX: Wrap index creation for secondary DB **
             try:
                 second_collection.create_index([("file_name", TEXT)], background=True)
             except OperationFailure as e:
