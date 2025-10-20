@@ -43,7 +43,8 @@ async def is_premium(user_id, bot):
 async def is_subscribed(bot, query_or_message: types.Message | types.CallbackQuery): # Accept query or message
     btn = []
     loop = asyncio.get_running_loop() # Get loop
-    stg = await loop.run_in_executor(None, db.get_bot_sttgs) # Wrap sync call
+    # Wrap sync db.get_bot_sttgs call
+    stg = await loop.run_in_executor(None, db.get_bot_sttgs)
     if not stg: return btn
 
     user_id = query_or_message.from_user.id
@@ -73,7 +74,7 @@ async def is_subscribed(bot, query_or_message: types.Message | types.CallbackQue
         user_is_member = False; invite_link = None
 
         try:
-            # Wrap sync db call
+            # Wrap sync db.find_join_req call
             has_pending_req = await loop.run_in_executor(None, db.find_join_req, user_id)
 
             if is_request_channel and has_pending_req:
@@ -100,7 +101,7 @@ async def is_subscribed(bot, query_or_message: types.Message | types.CallbackQue
     return btn
 
 
-def upload_image(file_path): # This is sync, calls to it must be wrapped
+def upload_image(file_path): # Sync func, wrap calls to it
     try:
         with open(file_path, 'rb') as f:
             files = {'files[]': f}
@@ -126,7 +127,6 @@ async def get_poster(query, bulk=False, id=False, file=None):
     if not imdb: logger.warning("IMDb lookup skipped: Cinemagoer not initialized."); return None
     loop = asyncio.get_running_loop()
 
-    # Define synchronous parts to run in executor
     def _sync_imdb_search(title_search, year_str_search):
         movies_search = imdb.search_movie(title_search, results=15)
         if not movies_search: return None, None
@@ -135,7 +135,7 @@ async def get_poster(query, bulk=False, id=False, file=None):
             year_filtered_search = [m for m in movies_search if str(m.get('year', '')) == year_str_search]
             if year_filtered_search: filtered = year_filtered_search
         kind_filtered_search = [m for m in filtered if m.get('kind') in ['movie', 'tv series']]
-        if not kind_filtered_search: kind_filtered_search = filtered # Fallback
+        if not kind_filtered_search: kind_filtered_search = filtered
         return kind_filtered_search, movies_search
 
     def _sync_imdb_get_details(movie_id_get):
@@ -149,87 +149,42 @@ async def get_poster(query, bulk=False, id=False, file=None):
         title = query_lower
         year_search_re = re.findall(r'[1-2]\d{3}$', query_lower, re.IGNORECASE)
         year_str = None
-        if year_search_re:
-            year_str = list_to_str(year_search_re[:1])
-            title = re.sub(r'[1-2]\d{3}$', '', title, flags=re.IGNORECASE).strip()
+        if year_search_re: year_str = list_to_str(year_search_re[:1]); title = re.sub(r'[1-2]\d{3}$', '', title, flags=re.IGNORECASE).strip()
         elif file is not None:
             year_search_file = re.findall(r'[1-2]\d{3}', str(file), re.IGNORECASE)
             if year_search_file: year_str = list_to_str(year_search_file[:1])
-
         try:
-            logger.debug(f"Searching IMDb (async wrap): title='{title}', year={year_str}")
-            # Run blocking search in executor
             kind_filtered, _ = await loop.run_in_executor(None, partial(_sync_imdb_search, title, year_str))
-
-            if not kind_filtered: logger.debug("No movie/tv series found after filter"); return None
+            if not kind_filtered: logger.debug("No movie/tv series found"); return None
             if bulk: return kind_filtered
-
-            movie_obj = kind_filtered[0]
-            movie_id = movie_obj.movieID
+            movie_obj = kind_filtered[0]; movie_id = movie_obj.movieID
             logger.debug(f"Selected IMDb: {movie_obj.get('title')} ({movie_obj.get('year')}) ID: {movie_id}")
+        except Exception as e: logger.error(f"IMDb search exception (async wrap): {e}"); return None
+    else: movie_id = query
+    if not movie_id: return None
 
-        except Exception as e: logger.error(f"IMDb search exception (async wrap): {e}", exc_info=False); return None
-    else:
-        movie_id = query
-
-    if not movie_id: return None # Ensure we have an ID
-
-    # Fetch full details
     try:
-        logger.debug(f"Fetching details (async wrap) for IMDb ID: {movie_id}")
-        # Run blocking get_movie in executor
         movie = await loop.run_in_executor(None, partial(_sync_imdb_get_details, movie_id))
-
-        if not movie: logger.warning(f"Could not get details for ID {movie_id}"); return None
+        if not movie: logger.warning(f"Could not get details ID {movie_id}"); return None
         logger.debug(f"Fetched details for {movie.get('title')}")
-    except Exception as e: logger.error(f"IMDb get_movie exception (async wrap): {e}", exc_info=False); return None
+    except Exception as e: logger.error(f"IMDb get_movie exception (async wrap): {e}"); return None
 
-    # --- Extract data (this part is CPU bound, fine in async) ---
     na_styled = "ɴ/ᴀ"
     m_title = movie.get('title', na_styled)
-    year = movie.get('year', '')
-    year_info = f"({year})" if year else ""
+    year = movie.get('year', ''); year_info = f"({year})" if year else ""
     genres = list_to_str(movie.get("genres", [na_styled]))
     rating = str(movie.get("rating", na_styled))
-    votes_data = movie.get('votes', na_styled) # Votes fetched by update
-    votes = f"{votes_data:,}" if isinstance(votes_data, int) else votes_data
+    votes_data = movie.get('votes', na_styled); votes = f"{votes_data:,}" if isinstance(votes_data, int) else votes_data
     languages = list_to_str(movie.get("languages", [na_styled]))
-    runtime_data = movie.get("runtimes")
-    runtime = f"{runtime_data[0]} ᴍɪɴs" if isinstance(runtime_data, list) and runtime_data else na_styled
-
+    runtime_data = movie.get("runtimes"); runtime = f"{runtime_data[0]} ᴍɪɴs" if isinstance(runtime_data, list) and runtime_data else na_styled
     if LONG_IMDB_DESCRIPTION: plot = movie.get('plot outline') or (movie.get('plot') and movie.get('plot')[0]) or na_styled
     else: plot = (movie.get('plot') and movie.get('plot')[0]) or movie.get('plot outline') or na_styled
     if plot != na_styled and len(plot) > 400: plot = plot[:397] + "..."
     poster_url = movie.get('full-size cover url')
-
-    return {
-        'title': m_title, 'year': year, 'year_info': year_info, 'genres': genres,
-        'rating': rating, 'votes': votes, 'languages': languages, 'runtime': runtime,
-        'plot': plot, 'poster': poster_url, 'url': f'https://www.imdb.com/title/tt{movie_id}',
-        "aka": list_to_str(movie.get("akas", [])),
-        "seasons": movie.get("number of seasons", na_styled),
-        "box_office": movie.get('box office', na_styled),
-        "localized_title": movie.get('localized title', m_title),
-        "kind": movie.get("kind", na_styled),
-        "imdb_id": f"tt{movie.get('imdbID', movie_id)}",
-        "cast": list_to_str(movie.get("cast", [])),
-        "countries": list_to_str(movie.get("countries", [])),
-        "certificates": list_to_str(movie.get("certificates", [])),
-        "director": list_to_str(movie.get("director", [])),
-        "writer": list_to_str(movie.get("writer", [])),
-        "producer": list_to_str(movie.get("producer", [])),
-        "composer": list_to_str(movie.get("composer", [])),
-        "cinematographer": list_to_str(movie.get("cinematographer", [])),
-        "music_team": list_to_str(movie.get("music department", [])),
-        "distributors": list_to_str(movie.get("distributors", [])),
-        'release_date': movie.get("original air date") or movie.get("year") or na_styled,
-    }
-
+    return { 'title': m_title, 'year': year, 'year_info': year_info, 'genres': genres, 'rating': rating, 'votes': votes, 'languages': languages, 'runtime': runtime, 'plot': plot, 'poster': poster_url, 'url': f'https://www.imdb.com/title/tt{movie_id}', "aka": list_to_str(movie.get("akas", [])), "seasons": movie.get("number of seasons", na_styled), "box_office": movie.get('box office', na_styled), "localized_title": movie.get('localized title', m_title), "kind": movie.get("kind", na_styled), "imdb_id": f"tt{movie.get('imdbID', movie_id)}", "cast": list_to_str(movie.get("cast", [])), "countries": list_to_str(movie.get("countries", [])), "certificates": list_to_str(movie.get("certificates", [])), "director": list_to_str(movie.get("director", [])), "writer": list_to_str(movie.get("writer", [])), "producer": list_to_str(movie.get("producer", [])), "composer": list_to_str(movie.get("composer", [])), "cinematographer": list_to_str(movie.get("cinematographer", [])), "music_team": list_to_str(movie.get("music department", [])), "distributors": list_to_str(movie.get("distributors", [])), 'release_date': movie.get("original air date") or movie.get("year") or na_styled, }
 
 async def is_check_admin(bot, chat_id, user_id):
-    try:
-        member = await bot.get_chat_member(chat_id, user_id)
-        return member.status in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER]
+    try: member = await bot.get_chat_member(chat_id, user_id); return member.status in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER]
     except Exception as e: logger.error(f"Admin check error ({chat_id}, {user_id}): {e}"); return False
 
 # --- CORRECTED DB Wrappers ---
@@ -238,42 +193,30 @@ async def get_verify_status(user_id):
     verify = temp.VERIFICATIONS.get(user_id)
     if not verify:
         loop = asyncio.get_running_loop()
-        # Wrap the sync db call
+        # ** FIX: Correctly wrap the sync db call **
         verify = await loop.run_in_executor(None, db.get_verify_status, user_id)
-        temp.VERIFICATIONS[user_id] = verify # Cache result
+        temp.VERIFICATIONS[user_id] = verify
 
-    # Expiry logic (CPU bound, fine in async)
     expire_time = verify.get('expire_time')
-    # Ensure times are datetime objects or None before comparison
-    if not isinstance(expire_time, datetime) and expire_time is not None:
-        verify['expire_time'] = None # Invalidate non-datetime
-        
+    if not isinstance(expire_time, datetime) and expire_time is not None: verify['expire_time'] = None
     if not isinstance(expire_time, datetime):
          verified_time = verify.get('verified_time')
-         if not isinstance(verified_time, datetime) and verified_time is not None:
-             verified_time = None
-             
+         if not isinstance(verified_time, datetime) and verified_time is not None: verified_time = None
          if isinstance(verified_time, datetime):
+              from info import VERIFY_EXPIRE
               base_time = verified_time.replace(tzinfo=timezone.utc) if verified_time.tzinfo is None else verified_time
               verify['expire_time'] = base_time + timedelta(seconds=VERIFY_EXPIRE)
-         else:
-              verify['expire_time'] = datetime.fromtimestamp(0, tz=timezone.utc) if verify.get('is_verified') else datetime.fromtimestamp(0, tz=timezone.utc)
-
-    return verify.copy() # Return copy
+         else: verify['expire_time'] = datetime.fromtimestamp(0, tz=timezone.utc) if verify.get('is_verified') else datetime.fromtimestamp(0, tz=timezone.utc)
+    return verify.copy()
 
 async def update_verify_status(user_id, verify_token="", is_verified=False, link="", expire_time=None):
     user_id = int(user_id)
-    current = await get_verify_status(user_id) # Use the async wrapper
-
-    current['verify_token'] = verify_token
-    current['is_verified'] = is_verified
-    current['link'] = link
+    current = await get_verify_status(user_id) # Use the async wrapper (which is now correct)
+    current['verify_token'] = verify_token; current['is_verified'] = is_verified; current['link'] = link
     if isinstance(expire_time, datetime): current['expire_time'] = expire_time
     if is_verified and (not isinstance(current.get('verified_time'), datetime) or not current.get('is_verified')):
          current['verified_time'] = datetime.now(timezone.utc)
-
-    temp.VERIFICATIONS[user_id] = current.copy() # Update cache
-
+    temp.VERIFICATIONS[user_id] = current.copy()
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, db.update_verify_status, user_id, current) # Wrap sync db call
 
@@ -282,35 +225,27 @@ async def get_settings(group_id):
     settings = temp.SETTINGS.get(group_id)
     if not settings:
         loop = asyncio.get_running_loop()
-        settings = await loop.run_in_executor(None, db.get_settings, group_id)
+        settings = await loop.run_in_executor(None, db.get_settings, group_id) # Wrap sync db call
         temp.SETTINGS[group_id] = settings
     return settings.copy() if settings else db.default_setgs.copy()
 
 async def save_group_settings(group_id, key, value):
     group_id = int(group_id)
-    current = await get_settings(group_id)
+    current = await get_settings(group_id) # Use async wrapper
     current[key] = value
     temp.SETTINGS[group_id] = current.copy()
     loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, db.update_settings, group_id, current)
+    await loop.run_in_executor(None, db.update_settings, group_id, current) # Wrap sync db call
 
 # broadcast_messages remains async
 async def broadcast_messages(user_id, message, pin):
-    try:
-        m = await message.copy(chat_id=user_id)
-        if pin: await m.pin(disable_notification=True)
-        return "Success"
+    try: m = await message.copy(chat_id=user_id); await m.pin(disable_notification=True) if pin else None; return "Success"
     except FloodWait as e: logger.warning(f"FloodWait user {user_id}: sleep {e.value}"); await asyncio.sleep(e.value); return await broadcast_messages(user_id, message, pin)
     except Exception as e: logger.error(f"Broadcast user error {user_id}: {e}"); db.delete_user(int(user_id)); return "Error"
 
 # groups_broadcast_messages remains async
 async def groups_broadcast_messages(chat_id, message, pin):
-    try:
-        k = await message.copy(chat_id=chat_id)
-        if pin:
-            try: await k.pin(disable_notification=True)
-            except Exception as pin_e: logger.warning(f"Pin error group {chat_id}: {pin_e}")
-        return "Success"
+    try: k = await message.copy(chat_id=chat_id); await k.pin(disable_notification=True) if pin else None; return "Success"
     except FloodWait as e: logger.warning(f"FloodWait group {chat_id}: sleep {e.value}"); await asyncio.sleep(e.value); return await groups_broadcast_messages(chat_id, message, pin)
     except Exception as e: logger.error(f"Broadcast group error {chat_id}: {e}"); db.delete_chat(chat_id); return "Error"
 
@@ -338,16 +273,14 @@ def get_readable_time(seconds):
 
 # get_wish remains sync
 def get_wish():
-    try:
-        time_now = datetime.now(pytz.timezone(TIME_ZONE))
-        hour = int(time_now.strftime("%H"))
-        if 5 <= hour < 12: return "ɢᴏᴏᴅ ᴍᴏʀɴɪɴɢ ☀️"
-        elif 12 <= hour < 18: return "ɢᴏᴏᴅ ᴀғᴛᴇʀɴᴏᴏɴ 🌤️"
-        else: return "ɢᴏᴏᴅ ᴇᴠᴇɴɪɴɢ 🌙"
-    except Exception as e: logger.error(f"Get wish error: {e}"); return "ʜᴇʟʟᴏ"
+    try: time_now = datetime.now(pytz.timezone(TIME_ZONE)); hour = int(time_now.strftime("%H"))
+    except Exception as e: logger.error(f"Get wish timezone error: {e}"); hour = datetime.now().hour # Fallback to local hour
+    if 5 <= hour < 12: return "ɢᴏᴏᴅ ᴍᴏʀɴɪɴɢ ☀️"
+    elif 12 <= hour < 18: return "ɢᴏᴏᴅ ᴀғᴛᴇʀɴᴏᴏɴ 🌤️"
+    else: return "ɢᴏᴏᴅ ᴇᴠᴇɴɪɴɢ 🌙"
 
-# --- CORRECTED get_seconds ---
-def get_seconds(time_string): # Changed to regular def
+# get_seconds remains sync
+def get_seconds(time_string):
     match = re.match(r"(\d+)\s*(s|sec|m|min|h|hr|d|day|w|week|month|y|year)$", str(time_string).lower().strip(), re.IGNORECASE)
     if not match: return 0
     value = int(match.group(1)); unit = match.group(2)
@@ -359,3 +292,4 @@ def get_seconds(time_string): # Changed to regular def
     elif unit.startswith('month'): return value * 86400 * 30 # Approx
     elif unit.startswith('y'): return value * 86400 * 365 # Approx
     else: return 0
+
