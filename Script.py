@@ -1,124 +1,118 @@
 class script(object):
 
-    START_TXT = """<b><blockquote>ʜᴇʏ {}, <i>{}</i></blockquote>
-    
-ɪ'ᴍ ᴀ ᴘᴏᴡᴇʀꜰᴜʟ ᴀᴜᴛᴏꜰɪʟᴛᴇʀʙᴏᴛ ᴅᴇꜱɪɢɴᴇᴅ ᴛᴏ ᴘʀᴏᴠɪᴅᴇ ᴍᴏᴠɪᴇꜱ & ꜱᴇʀɪᴇꜱ. ᴊᴏɪɴ ᴏᴜʀ ɢʀᴏᴜᴘꜱ ᴛᴏ ɢᴇᴛ ʟᴀᴛᴇꜱᴛ ᴍᴏᴠɪᴇꜱ ᴀɴᴅ ꜱᴇʀɪᴇꜱ ✅👇
+    START_TXT = """<b>ʜᴇʏ {}, <i>{}</i> 👋</b>
 
-<blockquote>Jᴏɪɴ : @norFederation Fᴏʀ Uᴘᴅᴀᴛᴇꜱ ✅</blockquote></b>"""
+ɪ'ᴍ ᴀɴ ᴀᴜᴛᴏғɪʟᴛᴇʀ ʙᴏᴛ ᴛᴏ ғɪɴᴅ ғɪʟᴇs ғᴏʀ ʏᴏᴜ. 🔎
 
-    MY_ABOUT_TXT = """★ Server: <a href=https://www.heroku.com>Heroku</a>
-★ Database: <a href=https://www.mongodb.com>MongoDB</a>
-★ Language: <a href=https://www.python.org>Python</a>
-★ Library: <a href=https://t.me/HydrogramNews>Hydrogram</a>"""
+<blockquote>ᴊᴏɪɴ: @ɴᴏʀғᴇᴅᴇʀᴀᴛɪᴏɴ ғᴏʀ ᴜᴘᴅᴀᴛᴇs ✨</blockquote></b>"""
 
-    MY_OWNER_TXT = """★ Name: Zach
-★ Username: @actualhomie
-★ Country: India 🇮🇳"""
+    MY_ABOUT_TXT = """♢ sᴇʀᴠᴇʀ: <a href=https://www.heroku.com>ʜᴇʀᴏᴋᴜ</a>
+♢ ᴅᴀᴛᴀʙᴀsᴇ: <a href=https://www.mongodb.com>ᴍᴏɴɢᴏᴅʙ</a>
+♢ ʟᴀɴɢᴜᴀɢᴇ: <a href=https://www.python.org>ᴘʏᴛʜᴏɴ</a>
+♢ ʟɪʙʀᴀʀʏ: <a href=https://t.me/HydrogramNews>ʜʏᴅʀᴏɢʀᴀᴍ</a>"""
 
-    STATUS_TXT = """👤 Total Users: <code>{}</code>
-😎 Users: <code>{}</code>
-👥 Total Chats: <code>{}</code>
-🗳 Data database used: <code>{}</code>
+    MY_OWNER_TXT = """♢ ɴᴀᴍᴇ: ᴢᴀᴄʜ
+♢ ᴜsᴇʀɴᴀᴍᴇ: @ᴀᴄᴛᴜᴀʟʜᴏᴍɪᴇ
+♢ ᴄᴏᴜɴᴛʀʏ: ɪɴᴅɪᴀ 🇮🇳"""
 
-🗂 1st database Files: <code>{}</code>
-🗳 1st files database used: <code>{}</code>
+    # Reworked STATUS_TXT
+    STATUS_TXT = """📊 ʙᴏᴛ sᴛᴀᴛɪsᴛɪᴄs
 
-🗂 2nd database Files: <code>{}</code>
-🗳 2nd files database used: <code>{}</code>
+╭─[ ᴜsᴇʀ ɪɴғᴏ ]───➣
+│ 👤 ᴛᴏᴛᴀʟ ᴜsᴇʀs: <code>{}</code>
+│ 👥 ᴛᴏᴛᴀʟ ᴄʜᴀᴛs: <code>{}</code>
+╰─────────────➣
 
-🚀 Bot Uptime: <code>{}</code>"""
+╭─[ ᴅᴀᴛᴀʙᴀsᴇ sᴛᴀᴛs ]───➣
+│ 🗳️ ʙᴏᴛ ᴅᴀᴛᴀ sɪᴢᴇ: <code>{}</code>
+│ ```````````````````````````````````````````````````````
+│ 💾 ᴛᴏᴛᴀʟ ғɪʟᴇs: <code>{}</code>
+│ ```````````````````````````````````````````````````````
+│ 🗂️ ᴅʙ¹ ғɪʟᴇs: <code>{}</code> | sɪᴢᴇ: <code>{}</code>
+│ 🗂️ ᴅʙ² ғɪʟᴇs: <code>{}</code> | sɪᴢᴇ: <code>{}</code>
+╰───────────────────➣
 
-    NEW_GROUP_TXT = """#NewGroup
-Title - {}
-ID - <code>{}</code>
-Username - {}
-Total - <code>{}</code>"""
+⏳ ʙᴏᴛ ᴜᴘᴛɪᴍᴇ: <code>{}</code>
+""" # Removed premium user count
 
-    NEW_USER_TXT = """#NewUser
-★ Name: {}
-★ ID: <code>{}</code>"""
+    NEW_GROUP_TXT = """#ɴᴇᴡ_ɢʀᴏᴜᴘ
+♢ ᴛɪᴛʟᴇ: {}
+♢ ɪᴅ: <code>{}</code>
+♢ ᴜsᴇʀɴᴀᴍᴇ: {}
+♢ ᴍᴇᴍʙᴇʀs: <code>{}</code>"""
 
-    NOT_FILE_TXT = """👋 Hello {},
+    NEW_USER_TXT = """#ɴᴇᴡ_ᴜsᴇʀ
+♢ ɴᴀᴍᴇ: {}
+♢ ɪᴅ: <code>{}</code>"""
 
-I can't find the <b>{}</b> in my database! 🥲
+    NOT_FILE_TXT = """👋 ʜᴇʟʟᴏ {},
 
-👉 Google Search and check your spelling is correct.
-👉 Please read the Instructions to get better results.
-👉 Or not been released yet."""
-    
-    IMDB_TEMPLATE = """✅ I Found: <code>{query}</code>
+ɪ ᴄᴏᴜʟᴅɴ'ᴛ ғɪɴᴅ `<b>{}</b>` ɪɴ ᴍʏ ᴅᴀᴛᴀʙᴀsᴇ! 🤷‍♂️
 
-🏷 Title: <a href={url}>{title}</a>
-🎭 Genres: {genres}
-📆 Year: <a href={url}/releaseinfo>{year}</a>
-🌟 Rating: <a href={url}/ratings>{rating} / 10</a>
-☀️ Languages: {languages}
-📀 RunTime: {runtime} Minutes
+♢ ᴅᴏᴜʙʟᴇ-ᴄʜᴇᴄᴋ ᴛʜᴇ sᴘᴇʟʟɪɴɢ.
+♢ ᴛʀʏ ᴜsɪɴɢ ᴍᴏʀᴇ sᴘᴇᴄɪғɪᴄ ᴋᴇʏᴡᴏʀᴅs.
+♢ ᴛʜᴇ ғɪʟᴇ ᴍɪɢʜᴛ ɴᴏᴛ ʙᴇ ʀᴇʟᴇᴀsᴇᴅ ᴏʀ ᴀᴅᴅᴇᴅ ʏᴇᴛ."""
 
-🗣 Requested by: {message.from_user.mention}
-©️ Powered by: <b>{message.chat.title}</b>"""
+    # Updated IMDB_TEMPLATE
+    IMDB_TEMPLATE = """✨ ғᴏᴜɴᴅ: <code>{query}</code>
 
-    FILE_CAPTION = """<i>{file_name}</i>
+🎬 ᴛɪᴛʟᴇ: <a href={url}>{title}</a> {year_info}
+🎭 ɢᴇɴʀᴇs: {genres}
+⭐ ʀᴀᴛɪɴɢ: <a href={url}/ratings>{rating} / 10</a> ({votes} ᴠᴏᴛᴇs)
+🌐 ʟᴀɴɢᴜᴀɢᴇs: {languages}
+⏰ ʀᴜɴᴛɪᴍᴇ: {runtime}
 
-🚫 ᴘʟᴇᴀsᴇ ᴄʟɪᴄᴋ ᴏɴ ᴛʜᴇ ᴄʟᴏsᴇ ʙᴜᴛᴛᴏɴ ɪꜰ ʏᴏᴜ ʜᴀᴠᴇ sᴇᴇɴ ᴛʜᴇ ᴍᴏᴠɪᴇ 🚫"""
+📝 ᴘʟᴏᴛ: {plot}
 
-    WELCOME_TEXT = """👋 Hello {mention}, Welcome to {title} group! 💞"""
+👤 ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ: {message.from_user.mention}
+⚙️ ᴘᴏᴡᴇʀᴇᴅ ʙʏ: <b>{message.chat.title}</b>"""
 
-    HELP_TXT = """👋 Hello {},
-    
-I can filter movie and series you want
-Just type you want movie or series in my PM or adding me in to group
-And i have more feature for you
-Just try my commands"""
+    FILE_CAPTION = """<i>{file_name}</i>""" # Kept simple
 
-    ADMIN_COMMAND_TXT = """<b>Here is bot admin commands 👇
+    WELCOME_TEXT = """👋 ʜᴇʟʟᴏ {mention}, ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ {title}! 🎉"""
 
+    HELP_TXT = """👋 ʜᴇʟʟᴏ {},
 
-/index_channels - to check how many index channel id added
-/stats - to get bot status
-/delete - to delete files using query
-/delete_all - to delete all indexed file
-/broadcast - to send message to all bot users
-/grp_broadcast - to send message to all groups
-/pin_broadcast - to send message as pin to all bot users.
-/pin_grp_broadcast - to send message as pin to all groups.
-/restart - to restart bot
-/leave - to leave your bot from particular group
-/users - to get all users details
-/chats - to get all groups
-/invite_link - to generate invite link
-/index - to index bot accessible channels
-/delreq - to delete join request in db (if change REQUEST_FORCE_SUB_CHANNELS using /set_req_fsub then must need use this command)
-/set_req_fsub - to set request force subscribe channel
-/set_fsub - to set force subscribe channels</b>"""
-    
-    PLAN_TXT = """Activate any premium plan to get exclusive features.
+ʜᴏᴡ ᴄᴀɴ ɪ ᴀssɪsᴛ ʏᴏᴜ ᴛᴏᴅᴀʏ?
+ʏᴏᴜ ᴄᴀɴ sᴇᴀʀᴄʜ ғᴏʀ ғɪʟᴇs ɪɴ ᴘᴍ ᴏʀ ɪɴ ᴀ ɢʀᴏᴜᴘ.
 
-You can activate any premium plan and then you can get exclusive features.
+ᴄʜᴇᴄᴋ ᴏᴜᴛ ᴛʜᴇ ᴀᴠᴀɪʟᴀʙʟᴇ ᴄᴏᴍᴍᴀɴᴅs ʙᴇʟᴏᴡ! 👇"""
 
-- INR {} for pre day -
+    ADMIN_COMMAND_TXT = """<b>⚙️ ᴀᴅᴍɪɴ ᴄᴏᴍᴍᴀɴᴅs:</b>
 
-Basic premium features:
-Ad free experience
-Online watch and fast download
-No need joind channels
-No need verify
-No shortlink
-Admins support
-And more...
+/ɪɴᴅᴇx_ᴄʜᴀɴɴᴇʟs ⤬ ᴄʜᴇᴄᴋ ɪɴᴅᴇxᴇᴅ ᴄʜᴀɴɴᴇʟs
+/sᴛᴀᴛs ⤬ ɢᴇᴛ ʙᴏᴛ sᴛᴀᴛɪsᴛɪᴄs
+/ᴅᴇʟᴇᴛᴇ [ǫᴜᴇʀʏ] ⤬ ᴅᴇʟᴇᴛᴇ ғɪʟᴇs
+/ᴅᴇʟᴇᴛᴇ_ᴀʟʟ ⤬ ᴅᴇʟᴇᴛᴇ ᴀʟʟ ɪɴᴅᴇxᴇᴅ ғɪʟᴇs (⚠️)
+/ᴄʟᴇᴀɴᴍᴜʟᴛᴅʙ ⤬ ʀᴇᴍᴏᴠᴇ ᴄʀᴏss-ᴅʙ ᴅᴜᴘʟɪᴄᴀᴛᴇs
+/ʙʀᴏᴀᴅᴄᴀsᴛ ⤬ sᴇɴᴅ ᴍsɢ ᴛᴏ ᴜsᴇʀs (ʀᴇᴘʟʏ)
+/ɢʀᴘ_ʙʀᴏᴀᴅᴄᴀsᴛ ⤬ sᴇɴᴅ ᴍsɢ ᴛᴏ ɢʀᴏᴜᴘs (ʀᴇᴘʟʏ)
+/ᴘɪɴ_ʙʀᴏᴀᴅᴄᴀsᴛ ⤬ ʙʀᴏᴀᴅᴄᴀsᴛ & ᴘɪɴ (ᴜsᴇʀs)
+/ᴘɪɴ_ɢʀᴘ_ʙʀᴏᴀᴅᴄᴀsᴛ ⤬ ʙʀᴏᴀᴅᴄᴀsᴛ & ᴘɪɴ (ɢʀᴏᴜᴘs)
+/ʀᴇsᴛᴀʀᴛ ⤬ ʀᴇsᴛᴀʀᴛ ʙᴏᴛ
+/ʟᴇᴀᴠᴇ [ᴄʜᴀᴛ_ɪᴅ] ⤬ ʟᴇᴀᴠᴇ ᴀ ɢʀᴏᴜᴘ
+/ᴜsᴇʀs ⤬ ʟɪsᴛ ᴀʟʟ ᴜsᴇʀs
+/ᴄʜᴀᴛs ⤬ ʟɪsᴛ ᴀʟʟ ᴄʜᴀᴛs
+/ɪɴᴠɪᴛᴇ_ʟɪɴᴋ [ᴄʜᴀᴛ_ɪᴅ] ⤬ ɢᴇɴ ɪɴᴠɪᴛᴇ ʟɪɴᴋ
+/ɪɴᴅᴇx ⤬ sᴛᴀʀᴛ ɪɴᴅᴇxɪɴɢ
+/ᴅᴇʟʀᴇǫ ⤬ ᴄʟᴇᴀʀ ᴊᴏɪɴ ʀᴇǫᴜᴇsᴛs
+/sᴇᴛ_ʀᴇǫ_ғsᴜʙ [ᴄʜᴀɴɴᴇʟ_ɪᴅ] ⤬ sᴇᴛ ᴊᴏɪɴ ʀᴇǫ ғsᴜʙ
+/sᴇᴛ_ғsᴜʙ [ɪᴅs...] ⤬ sᴇᴛ ɴᴏʀᴍᴀʟ ғsᴜʙ
+/ᴏғғ_ᴀᴜᴛᴏ_ғɪʟᴛᴇʀ ⤬ ᴅɪsᴀʙʟᴇ ᴀᴜᴛᴏ-ғɪʟᴛᴇʀ
+/ᴏɴ_ᴀᴜᴛᴏ_ғɪʟᴛᴇʀ ⤬ ᴇɴᴀʙʟᴇ ᴀᴜᴛᴏ-ғɪʟᴛᴇʀ
+/ᴏғғ_ᴘᴍ_sᴇᴀʀᴄʜ ⤬ ᴅɪsᴀʙʟᴇ ᴘᴍ sᴇᴀʀᴄʜ
+/ᴏɴ_ᴘᴍ_sᴇᴀʀᴄʜ ⤬ ᴇɴᴀʙʟᴇ ᴘᴍ sᴇᴀʀᴄʜ""" # Removed premium commands
 
-Support: {}"""
+    USER_COMMAND_TXT = """<b>✨ ᴜsᴇʀ ᴄᴏᴍᴍᴀɴᴅs:</b>
 
-    USER_COMMAND_TXT = """<b>Here is bot user commands 👇
+/sᴛᴀʀᴛ ⤬ ᴄʜᴇᴄᴋ ʙᴏᴛ sᴛᴀᴛᴜs
+/sᴇᴛᴛɪɴɢs ⤬ ᴄʜᴀɴɢᴇ ɢʀᴏᴜᴘ sᴇᴛᴛɪɴɢs (ᴀᴅᴍɪɴs)
+/ᴄᴏɴɴᴇᴄᴛ [ɢʀᴘ_ɪᴅ] ⤬ ʟɪɴᴋ ɢʀᴏᴜᴘ ᴛᴏ ᴘᴍ
+/ɪᴅ ⤬ ɢᴇᴛ ᴄᴜʀʀᴇɴᴛ ᴄʜᴀᴛ/ᴜsᴇʀ ɪᴅ"""
 
-/start - to check bot alive or not
-/settings - to change group settings as your wish
-/connect - to connect group settings to PM
-/id - to check group or channel id</b>"""
-    
-    SOURCE_TXT = """<b>😆✅
+    SOURCE_TXT = """<b>👨‍💻 sᴏᴜʀᴄᴇ ᴄᴏᴅᴇ:</b>
 
-- ᴛʜɪꜱ ʙᴏᴛ ɪꜱ ᴀɴ ᴏᴘᴇɴ ꜱᴏᴜʀᴄᴇ ᴘʀᴏᴊᴇᴄᴛ.
+ᴛʜɪs ɪs ᴀɴ ᴏᴘᴇɴ-sᴏᴜʀᴄᴇ ᴘʀᴏᴊᴇᴄᴛ.
+ᴅᴇᴠᴇʟᴏᴘᴇʀ - @ᴀᴄᴛᴜᴀʟʜᴏᴍɪᴇ"""
 
-- ᴅᴇᴠʟᴏᴘᴇʀ - @actualhomie"""
-
+    # Removed PLAN_TXT
