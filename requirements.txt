@@ -1,0 +1,16 @@
+hydrogram
+tgcrypto
+pymongo
+cinemagoer
+shortzy
+aiohttp
+aiofiles
+speedtest-cli
+uvloop
+requests
+qrcode
+Pillow
+pytz
+motor
+umongo
+dnspython
