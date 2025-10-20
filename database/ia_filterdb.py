@@ -30,11 +30,15 @@ try:
     # ** FIX: Check for db object correctly before getting collection **
     collection = db.get_collection(COLLECTION_NAME) if db is not None else None
     if collection is not None:
-        collection.create_index([("file_name", TEXT)], background=True)
+        # ** FIX: Wrap index creation to handle quota errors **
+        try:
+            collection.create_index([("file_name", TEXT)], background=True)
+        except OperationFailure as e:
+            logger.critical(f"Primary DB Full! Couldn't create index: {e}")
+            # Bot will continue but searches might be slow.
     logger.info("Connected to Primary Files DB.")
 except Exception as e:
     logger.critical(f"Cannot connect to Primary Files DB: {e}", exc_info=True)
-    # exit() # Exiting here is a valid option if primary DB is essential
 
 if SECOND_FILES_DATABASE_URL:
     try:
@@ -43,7 +47,11 @@ if SECOND_FILES_DATABASE_URL:
         # ** FIX: Check for second_db object correctly **
         second_collection = second_db.get_collection(COLLECTION_NAME) if second_db is not None else None
         if second_collection is not None:
-            second_collection.create_index([("file_name", TEXT)], background=True)
+            # ** FIX: Wrap index creation for secondary DB **
+            try:
+                second_collection.create_index([("file_name", TEXT)], background=True)
+            except OperationFailure as e:
+                logger.warning(f"Secondary DB Full! Couldn't create index: {e}")
         logger.info("Connected to Secondary Files DB.")
     except Exception as e:
         logger.error(f"Cannot connect to Secondary Files DB: {e}. Secondary DB disabled.")
@@ -139,14 +147,12 @@ async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None):
     primary_docs, primary_count = await run_find_and_count(collection, filter_query, offset, max_results)
     results.extend(primary_docs)
     total_results += primary_count
-    logger.debug(f"Primary search: Found {len(primary_docs)}, Total {primary_count}")
-
+    
     remaining_limit = max_results - len(primary_docs)
     if second_collection is not None and remaining_limit > 0:
         secondary_docs, secondary_count = await run_find_and_count(second_collection, filter_query, max(0, offset - primary_count), remaining_limit)
         results.extend(secondary_docs)
         total_results += secondary_count
-        logger.debug(f"Secondary search: Found {len(secondary_docs)}, Total {secondary_count}")
 
     if lang:
         lang = lang.lower()
