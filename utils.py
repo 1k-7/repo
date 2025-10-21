@@ -1,5 +1,5 @@
 from hydrogram.errors import UserNotParticipant, FloodWait
-from info import LONG_IMDB_DESCRIPTION, ADMINS, TIME_ZONE, INDEX_EXTENSIONS
+from info import LONG_IMDB_DESCRIPTION, ADMINS, TIME_ZONE, INDEX_EXTENSIONS, VERIFY_EXPIRE # Added VERIFY_EXPIRE
 from imdb import Cinemagoer
 import asyncio
 from functools import partial # Import partial
@@ -145,20 +145,28 @@ async def get_poster(query, bulk=False, id=False, file=None):
     loop = asyncio.get_running_loop()
 
     def _sync_imdb_search(title_search, year_str_search):
-        movies_search = imdb.search_movie(title_search, results=15)
-        if not movies_search: return None, None
-        filtered = movies_search
-        if year_str_search:
-            year_filtered_search = [m for m in movies_search if str(m.get('year', '')) == year_str_search]
-            if year_filtered_search: filtered = year_filtered_search
-        # Prioritize movie/tv series, fallback to original filtered list if none found
-        kind_filtered_search = [m for m in filtered if m.get('kind') in ['movie', 'tv series']]
-        return kind_filtered_search if kind_filtered_search else filtered, movies_search # Return filtered if kind fails
+        try: # Add broad exception handling
+            movies_search = imdb.search_movie(title_search, results=15)
+            if not movies_search: return None, None
+            filtered = movies_search
+            if year_str_search:
+                year_filtered_search = [m for m in movies_search if str(m.get('year', '')) == year_str_search]
+                if year_filtered_search: filtered = year_filtered_search
+            # Prioritize movie/tv series, fallback to original filtered list if none found
+            kind_filtered_search = [m for m in filtered if m.get('kind') in ['movie', 'tv series']]
+            return kind_filtered_search if kind_filtered_search else filtered, movies_search # Return filtered if kind fails
+        except Exception as e_sync_search:
+            logger.error(f"IMDb sync search exception for '{title_search}': {e_sync_search}")
+            return None, None
 
     def _sync_imdb_get_details(movie_id_get):
-        movie_get = imdb.get_movie(movie_id_get)
-        if movie_get: imdb.update(movie_get, info=['main', 'plot']) # Removed 'critic reviews' for speed
-        return movie_get
+        try: # Add broad exception handling
+            movie_get = imdb.get_movie(movie_id_get)
+            if movie_get: imdb.update(movie_get, info=['main', 'plot']) # Removed 'critic reviews' for speed
+            return movie_get
+        except Exception as e_sync_get:
+            logger.error(f"IMDb sync get_movie exception for ID {movie_id_get}: {e_sync_get}")
+            return None
 
     movie_id = None
     if not id:
@@ -250,32 +258,43 @@ async def get_verify_status(user_id):
     # Ensure expire_time is valid or recalculated
     expire_time = verify.get('expire_time')
     if not isinstance(expire_time, datetime) and expire_time is not None: verify['expire_time'] = None
-    if not isinstance(expire_time, datetime):
+    # Fix: Check if expire_time is still not a datetime *after* potential invalidation
+    if not isinstance(verify.get('expire_time'), datetime): # Use .get() here for safety
          verified_time = verify.get('verified_time')
          if not isinstance(verified_time, datetime) and verified_time is not None: verified_time = None
          if isinstance(verified_time, datetime):
-              from info import VERIFY_EXPIRE # Import locally if needed
+              # from info import VERIFY_EXPIRE # Already imported at top
               base_time = verified_time.replace(tzinfo=timezone.utc) if verified_time.tzinfo is None else verified_time
               verify['expire_time'] = base_time + timedelta(seconds=VERIFY_EXPIRE)
-         else: # Set to epoch if invalid/missing
+         else: # Set to epoch if invalid/missing and cannot calculate
              verify['expire_time'] = datetime.fromtimestamp(0, tz=timezone.utc)
 
     return verify.copy() # Return a copy to prevent modification of cache
 
+# --- Corrected update_verify_status ---
 async def update_verify_status(user_id, verify_token="", is_verified=False, link="", expire_time=None):
     user_id = int(user_id)
     current = await get_verify_status(user_id) # Get current status first
-    current['verify_token'] = verify_token; current['is_verified'] = is_verified; current['link'] = link
+    # Check the status *before* potentially updating it
+    user_was_verified_before = current.get('is_verified', False)
+
+    # Update fields based on arguments
+    current['verify_token'] = verify_token
+    current['is_verified'] = is_verified
+    current['link'] = link
     if isinstance(expire_time, datetime): current['expire_time'] = expire_time
-    # Set verified_time only when status changes to verified
-    if is_verified and not user_was_verified_before: # Need to check previous state
+
+    # Set verified_time only when status changes *to* verified
+    if is_verified and not user_was_verified_before:
          current['verified_time'] = datetime.now(timezone.utc)
-    elif not is_verified: # Reset verified_time if unverified
+    # Reset verified_time if status changes *to* unverified (or stays unverified)
+    elif not is_verified:
          current['verified_time'] = None
 
     temp.VERIFICATIONS[user_id] = current.copy() # Update cache
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, db.update_verify_status, user_id, current) # Update DB
+# --- End Correction ---
 
 async def get_settings(group_id):
     group_id = int(group_id)
@@ -355,5 +374,3 @@ def get_seconds(time_string):
     elif unit.startswith('month'): return value * 86400 * 30 # Approx
     elif unit.startswith('y'): return value * 86400 * 365 # Approx
     else: return 0
-
-
