@@ -328,7 +328,7 @@ async def index_status_alert(bot, query: CallbackQuery):
         eta = (remaining / processed_per_sec) if processed_per_sec > 0 and remaining > 0 else 0
 
         status_text = (
-             f"ɪɴᴅᴇхɪɴɢ ꜱᴛᴀᴛᴜꜱ (\`{index_stats.get('chat_id', 'ɴ/ᴀ')}\`)\n"
+             f"ɪɴᴅᴇхɪɴɢ ꜱᴛᴀᴛᴜꜱ (`{index_stats.get('chat_id', 'ɴ/ᴀ')}\`)\n"
              f"▷ {progress_bar_str} {percentage:.1f}%\n"
              f"▷ ᴍꜱɢ ɪᴅ: {index_stats.get('current', 0)}/{index_stats.get('last_msg_id', 0)}\n"
              f"▷ ꜱᴀᴠᴇᴅ: {index_stats.get('total_files', 0)} | ᴅᴜᴘ: {index_stats.get('duplicate', 0)}\n"
