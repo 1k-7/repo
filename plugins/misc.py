@@ -14,7 +14,7 @@ async def showid(client, message):
     replied_to_msg = message.reply_to_message # Use directly
 
     if replied_to_msg and replied_to_msg.forward_from_chat: # Check specifically for forwarded from channel
-        return await message.reply_text(f"ᴛʜᴇ ғᴏʀᴡᴀʀᴅᴇᴅ ᴍᴇꜱꜱᴀɢᴇ'ꜱ ᴏʀɪɢɪɴᴀʟ ᴄʜᴀɴɴᴇʟ, {replied_to_msg.forward_from_chat.title}, ʜᴀꜱ ɪᴅ: <code>{replied_to_msg.forward_from_chat.id}</code>.") # Font applied
+        return await message.reply_text(f"ᴛʜᴇ ꜰᴏʀᴡᴀʀᴅᴇᴅ ᴍᴇꜱꜱᴀɢᴇ'ꜱ ᴏʀɪɢɪɴᴀʟ ᴄʜᴀɴɴᴇʟ, {replied_to_msg.forward_from_chat.title}, ʜᴀꜱ ɪᴅ: <code>{replied_to_msg.forward_from_chat.id}</code>.") # Font applied
     elif replied_to_msg and replied_to_msg.from_user: # Check for replied to user
         return await message.reply_text(f"ʀᴇᴘʟɪᴇᴅ ᴛᴏ ᴜꜱᴇʀ ɪᴅ: <code>{replied_to_msg.from_user.id}</code>.") # Font applied
     elif chat_type == enums.ChatType.PRIVATE:
@@ -40,13 +40,13 @@ async def speedtest(client, message):
         await msg.edit("ᴄᴀɴ'ᴛ ᴄᴏɴɴᴇᴄᴛ ᴛᴏ ꜱᴇʀᴠᴇʀ ᴀᴛ ᴛʜᴇ ᴍᴏᴍᴇɴᴛ, ᴛʀʏ ᴀɢᴀɪɴ ʟᴀᴛᴇʀ!") # Font applied
         return
     except Exception as e:
-        await msg.edit(f"ꜱᴘᴇᴇᴅᴛᴇꜱᴛ ғᴀɪʟᴇᴅ: {e}") # Font applied
+        await msg.edit(f"ꜱᴘᴇᴇᴅᴛᴇꜱᴛ ꜰᴀɪʟᴇᴅ: {e}") # Font applied
         return
 
     photo = result.get('share')
     # Font applied to labels
     text = f'''
-➲ <b>ꜱᴘᴇᴇᴅᴛᴇꜱᴛ ɪɴғᴏ</b>
+➲ <b>ꜱᴘᴇᴇᴅᴛᴇꜱᴛ ɪɴꜰᴏ</b>
 ┠ <b>ᴜᴘʟᴏᴀᴅ:</b> <code>{get_size(result.get('upload', 0))}/s</code>
 ┠ <b>ᴅᴏᴡɴʟᴏᴀᴅ:</b>  <code>{get_size(result.get('download', 0))}/s</code>
 ┠ <b>ᴘɪɴɢ:</b> <code>{result.get('ping', 'N/A')} ms</code>
@@ -80,7 +80,7 @@ async def speedtest(client, message):
 @Client.on_message(filters.command("info"))
 async def who_is(client, message):
     status_message = await message.reply_text(
-        "ғᴇᴛᴄʜɪɴɢ ᴜꜱᴇʀ ɪɴғᴏ..." # Font applied
+        "ꜰᴇᴛᴄʜɪɴɢ ᴜꜱᴇʀ ɪɴꜰᴏ..." # Font applied
     )
     from_user = None
     if message.reply_to_message and message.reply_to_message.from_user:
@@ -99,17 +99,17 @@ async def who_is(client, message):
         from_user = message.from_user
 
     if not from_user:
-         await status_message.edit("ᴄᴏᴜʟᴅ ɴᴏᴛ ғɪɴᴅ ᴛʜᴇ ᴜꜱᴇʀ.") # Font applied
+         await status_message.edit("ᴄᴏᴜʟᴅ ɴᴏᴛ ꜰɪɴᴅ ᴛʜᴇ ᴜꜱᴇʀ.") # Font applied
          return
 
     # Font applied to labels
     message_out_str = ""
-    message_out_str += f"<b>➲ғɪʀꜱᴛ ɴᴀᴍᴇ:</b> {from_user.first_name}\n"
+    message_out_str += f"<b>➲ꜰɪʀꜱᴛ ɴᴀᴍᴇ:</b> {from_user.first_name}\n"
     last_name = from_user.last_name or 'ɴᴏᴛ ʜᴀᴠᴇ'
     message_out_str += f"<b>➲ʟᴀꜱᴛ ɴᴀᴍᴇ:</b> {last_name}\n"
     message_out_str += f"<b>➲ᴛᴇʟᴇɢʀᴀᴍ ɪᴅ:</b> <code>{from_user.id}</code>\n"
     username = f'@{from_user.username}' if from_user.username else 'ɴᴏᴛ ʜᴀᴠᴇ'
-    dc_id = from_user.dc_id or "ɴᴏᴛ ғᴏᴜɴᴅ"
+    dc_id = from_user.dc_id or "ɴᴏᴛ ꜰᴏᴜɴᴅ"
     message_out_str += f"<b>➲ᴅᴀᴛᴀ ᴄᴇɴᴛʀᴇ:</b> <code>{dc_id}</code>\n"
     message_out_str += f"<b>➲ᴜꜱᴇʀɴᴀᴍᴇ:</b> {username}\n"
     message_out_str += f"<b>➲ʟᴀꜱᴛ ᴏɴʟɪɴᴇ:</b> {last_online(from_user)}\n"
@@ -117,7 +117,7 @@ async def who_is(client, message):
     if message.chat.type in [enums.ChatType.SUPERGROUP, enums.ChatType.GROUP]:
         try:
             chat_member_p = await message.chat.get_member(from_user.id)
-            joined_date = chat_member_p.joined_date.strftime('%Y.%m.%d %H:%M:%S') if chat_member_p.joined_date else 'ɴᴏᴛ ғᴏᴜɴᴅ'
+            joined_date = chat_member_p.joined_date.strftime('%Y.%m.%d %H:%M:%S') if chat_member_p.joined_date else 'ɴᴏᴛ ꜰᴏᴜɴᴅ'
             message_out_str += (
                 f"<b>➲ᴊᴏɪɴᴇᴅ ᴛʜɪꜱ ᴄʜᴀᴛ ᴏɴ:</b> <code>"
                 f"{joined_date}"
