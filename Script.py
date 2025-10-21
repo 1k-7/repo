@@ -6,38 +6,35 @@ class script(object):
 
 <blockquote>ᴊᴏɪɴ: @norFederation ✨</blockquote></b>"""
 
-    MY_ABOUT_TXT = """♢ ꜱᴇʀᴠᴇʀ: <a href=https://www.heroku.com>ʜᴇʀᴏᴋᴜ</a>
+    MY_ABOUT_TXT = """♢ ꜱᴇʀᴠᴇʀ: <a href=https://www.koyeb.com>ᴋᴏʏᴇʙ</a>
 ♢ ᴅᴀᴛᴀʙᴀꜱᴇ: <a href=https://www.mongodb.com>ᴍᴏɴɢᴏᴅʙ</a>
 ♢ ʟᴀɴɢᴜᴀɢᴇ: <a href=https://www.python.org>ᴘʏᴛʜᴏɴ</a>
 ♢ ʟɪʙʀᴀʀʏ: <a href=https://t.me/HydrogramNews>ʜʏᴅʀᴏɢʀᴀᴍ</a>"""
 
     MY_OWNER_TXT = """♢ ɴᴀᴍᴇ: ᴢᴀᴄʜ
-♢ ᴜꜱᴇʀɴᴀᴍᴇ: @ᴀᴄᴛᴜᴀʟʜᴏᴍɪᴇ
+♢ ᴜꜱᴇʀɴᴀᴍᴇ: @ActualHomie
 ♢ ᴄᴏᴜɴᴛʀʏ: 𝚜𝚘𝚖𝚎𝚠𝚑𝚎𝚛𝚎 𝚒𝚗 𝚛𝚎𝚊𝚕𝚒𝚝𝚢"""
 
     # Reworked STATUS_TXT
     STATUS_TXT = """<blockquote>ʙᴏᴛ ꜱᴛᴀᴛɪꜱᴛɪᴄꜱ</blockquote>
 
-<blockquote>
-╭─[ ᴜꜱᴇʀ ɪɴꜰᴏ ]──────────➣
+<blockquote>╭─[ ᴜꜱᴇʀ ɪɴꜰᴏ ]────➣
 │ 👤 ᴛᴏᴛᴀʟ ᴜꜱᴇʀꜱ: <code>{}</code>
 │ 👥 ᴛᴏᴛᴀʟ ᴄʜᴀᴛꜱ: <code>{}</code>
-╰─────────────────────➣
+╰────────────────────➣
 </blockquote>
 
-<blockquote>
-╭─[ ᴅᴀᴛᴀʙᴀꜱᴇ ꜱᴛᴀᴛꜱ ]────➣
+<blockquote>╭─[ ᴅᴀᴛᴀʙᴀꜱᴇ ꜱᴛᴀᴛꜱ ]────➣
 │ 🗳️ ʙᴏᴛ ᴅᴀᴛᴀ ꜱɪᴢᴇ: <code>{}</code>
 │
 │ 💾 ᴛᴏᴛᴀʟ ꜰɪʟᴇꜱ: <code>{}</code>
 │
 │ 🗂️ ᴅʙ¹ ꜰɪʟᴇꜱ: <code>{}</code> | ꜱɪᴢᴇ: <code>{}</code>
 │ 🗂️ ᴅʙ² ꜰɪʟᴇꜱ: <code>{}</code> | ꜱɪᴢᴇ: <code>{}</code>
-╰─────────────────────➣
+╰───────────────────────────────➣
 </blockquote>
 
-<blockquote>
-⏳ ʙᴏᴛ ᴜᴘᴛɪᴍᴇ: <code>{}</code> </blockquote>
+<blockquote> ⏳ ʙᴏᴛ ᴜᴘᴛɪᴍᴇ: <code>{}</code> </blockquote>
 """ # Removed premium user count
 
     NEW_GROUP_TXT = """#ɴᴇᴡ_ɢʀᴏᴜᴘ
