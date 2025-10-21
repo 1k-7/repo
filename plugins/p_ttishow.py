@@ -27,7 +27,7 @@ async def welcome(bot, message):
         await bot.send_photo(
             chat_id=message.chat.id,
             photo=random.choice(PICS),
-            caption=f"👋 ʜᴇʟʟᴏ {user},\n\nᴛʜᴀɴᴋ ʏᴏᴜ ғᴏʀ ᴀᴅᴅɪɴɢ ᴍᴇ ᴛᴏ ᴛʜᴇ <b>'{message.chat.title}'</b> ɢʀᴏᴜᴘ! ᴅᴏɴ'ᴛ ғᴏʀɢᴇᴛ ᴛᴏ ᴍᴀᴋᴇ ᴍᴇ ᴀᴅᴍɪɴ.\nɪғ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴋɴᴏᴡ ᴍᴏʀᴇ, ᴘʟᴇᴀꜱᴇ ᴀꜱᴋ ɪɴ ᴛʜᴇ ꜱᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ. 😘",
+            caption=f" ʜᴇʟʟᴏ {user},\n\nᴛʜᴀɴᴋ ʏᴏᴜ ꜰᴏʀ ᴀᴅᴅɪɴɢ ᴍᴇ ᴛᴏ ᴛʜᴇ <b>'{message.chat.title}'</b> ɢʀᴏᴜᴘ! ᴅᴏɴ'ᴛ ꜰᴏʀɢᴇᴛ ᴛᴏ ᴍᴀᴋᴇ ᴍᴇ ᴀᴅᴍɪɴ.\nɪꜰ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴋɴᴏᴡ ᴍᴏʀᴇ, ᴘʟᴇᴀꜱᴇ ᴀꜱᴋ @ActualHomie ",
             reply_markup=reply_markup
         )
         # Add chat to DB if not already present
@@ -54,7 +54,7 @@ async def welcome(bot, message):
             except KeyError as e:
                 logger.error(f"Welcome message format error in chat {message.chat.id}: Missing key {e}")
                 # Fallback to a simpler message
-                await bot.send_message(chat_id=message.chat.id, text=f"👋 ᴡᴇʟᴄᴏᴍᴇ, {message.new_chat_member.user.mention}!")
+                await bot.send_message(chat_id=message.chat.id, text=f" ᴡᴇʟᴄᴏᴍᴇ, {message.new_chat_member.user.mention}!")
 
 
 @Client.on_message(filters.command('restart') & filters.user(ADMINS))
@@ -87,11 +87,11 @@ async def leave_a_chat(bot, message):
         await bot.send_message(
             chat_id=chat_id,
             # Font applied
-            text=f'ʜᴇʟʟᴏ ғʀɪᴇɴᴅꜱ,\nᴍʏ ᴏᴡɴᴇʀ ʜᴀꜱ ᴛᴏʟᴅ ᴍᴇ ᴛᴏ ʟᴇᴀᴠᴇ ᴛʜɪꜱ ɢʀᴏᴜᴘ, ꜱᴏ ɪ ᴍᴜꜱᴛ ɢᴏ! ɪꜰ ʏᴏᴜ ɴᴇᴇᴅ ᴛᴏ ᴀᴅᴅ ᴍᴇ ᴀɢᴀɪɴ, ᴘʟᴇᴀꜱᴇ ᴄᴏɴᴛᴀᴄᴛ ᴍʏ ꜱᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ.\nʀᴇᴀꜱᴏɴ - <code>{reason}</code>',
+            text=f'ʜᴇʟʟᴏ ꜰʀɪᴇɴᴅꜱ,\nᴍʏ ᴏᴡɴᴇʀ ʜᴀꜱ ᴛᴏʟᴅ ᴍᴇ ᴛᴏ ʟᴇᴀᴠᴇ ᴛʜɪꜱ ɢʀᴏᴜᴘ, ꜱᴏ ɪ ᴍᴜꜱᴛ ɢᴏ! ɪꜰ ʏᴏᴜ ɴᴇᴇᴅ ᴛᴏ ᴀᴅᴅ ᴍᴇ ᴀɢᴀɪɴ, ᴘʟᴇᴀꜱᴇ ᴄᴏɴᴛᴀᴄᴛ ᴍʏ ꜱᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ.\nʀᴇᴀꜱᴏɴ - <code>{reason}</code>',
             reply_markup=reply_markup,
         )
         await bot.leave_chat(chat_id)
-        await message.reply(f"✅ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ʟᴇғᴛ ɢʀᴏᴜᴘ: `{chat_id}`") # Font applied
+        await message.reply(f"✔️ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ʟᴇꜰᴛ ɢʀᴏᴜᴘ: `{chat_id}`") # Font applied
     except Exception as e:
         await message.reply(f'ᴇʀʀᴏʀ ʟᴇᴀᴠɪɴɢ ᴄʜᴀᴛ `{chat_id}`: {e}') # Font applied
 
@@ -112,7 +112,7 @@ async def disable_chat(bot, message):
         return await message.reply('ɢɪᴠᴇ ᴍᴇ ᴀ ᴠᴀʟɪᴅ ᴄʜᴀᴛ ɪᴅ (ɴᴜᴍʙᴇʀ).') # Font applied
     cha_t = await db.get_chat(chat_id) # Use await here
     if not cha_t:
-        return await message.reply("ᴄʜᴀᴛ ɴᴏᴛ ғᴏᴜɴᴅ ɪɴ ᴅᴀᴛᴀʙᴀꜱᴇ.") # Font applied
+        return await message.reply("ᴄʜᴀᴛ ɴᴏᴛ ꜰᴏᴜɴᴅ ɪɴ ᴅᴀᴛᴀʙᴀꜱᴇ.") # Font applied
     if cha_t.get('is_disabled', False): # Use .get() for safety
         return await message.reply(f"ᴛʜɪꜱ ᴄʜᴀᴛ ɪꜱ ᴀʟʀᴇᴀᴅʏ ᴅɪꜱᴀʙʟᴇᴅ.\nʀᴇᴀꜱᴏɴ - <code>{cha_t.get('reason','N/A')}</code>") # Font applied
     await db.disable_chat(chat_id, reason) # Use await
@@ -127,7 +127,7 @@ async def disable_chat(bot, message):
         # Font applied
         await bot.send_message(
             chat_id=chat_id,
-            text=f'ʜᴇʟʟᴏ ғʀɪᴇɴᴅꜱ,\nᴛʜɪꜱ ɢʀᴏᴜᴘ ʜᴀꜱ ʙᴇᴇɴ ʙᴀɴɴᴇᴅ ғʀᴏᴍ ᴜꜱɪɴɢ ᴍᴇ ʙʏ ᴍʏ ᴏᴡɴᴇʀ. ɪ ʜᴀᴠᴇ ᴛᴏ ʟᴇᴀᴠᴇ ɴᴏᴡ. ᴄᴏɴᴛᴀᴄᴛ ꜱᴜᴘᴘᴏʀᴛ ɪꜰ ʏᴏᴜ ᴛʜɪɴᴋ ᴛʜɪꜱ ɪꜱ ᴀ ᴍɪꜱᴛᴀᴋᴇ.\nʀᴇᴀꜱᴏɴ - <code>{reason}</code>',
+            text=f'ʜᴇʟʟᴏ ꜰʀɪᴇɴᴅꜱ,\nᴛʜɪꜱ ɢʀᴏᴜᴘ ʜᴀꜱ ʙᴇᴇɴ ʙᴀɴɴᴇᴅ ꜰʀᴏᴍ ᴜꜱɪɴɢ ᴍᴇ ʙʏ ᴍʏ ᴏᴡɴᴇʀ. ɪ ʜᴀᴠᴇ ᴛᴏ ʟᴇᴀᴠᴇ ɴᴏᴡ. ᴄᴏɴᴛᴀᴄᴛ ꜱᴜᴘᴘᴏʀᴛ ɪꜰ ʏᴏᴜ ᴛʜɪɴᴋ ᴛʜɪꜱ ɪꜱ ᴀ ᴍɪꜱᴛᴀᴋᴇ.\nʀᴇᴀꜱᴏɴ - <code>{reason}</code>',
             reply_markup=reply_markup)
         await bot.leave_chat(chat_id)
     except Exception as e:
@@ -144,7 +144,7 @@ async def re_enable_chat(bot, message):
         return await message.reply('ɢɪᴠᴇ ᴍᴇ ᴀ ᴠᴀʟɪᴅ ᴄʜᴀᴛ ɪᴅ (ɴᴜᴍʙᴇʀ).') # Font applied
     sts = await db.get_chat(chat_id) # Use await
     if not sts:
-        return await message.reply("ᴄʜᴀᴛ ɴᴏᴛ ғᴏᴜɴᴅ ɪɴ ᴅᴀᴛᴀʙᴀꜱᴇ.") # Font applied
+        return await message.reply("ᴄʜᴀᴛ ɴᴏᴛ ꜰᴏᴜɴᴅ ɪɴ ᴅᴀᴛᴀʙᴀꜱᴇ.") # Font applied
     if not sts.get('is_disabled', False): # Use .get()
         return await message.reply('ᴛʜɪꜱ ᴄʜᴀᴛ ɪꜱ ɴᴏᴛ ᴄᴜʀʀᴇɴᴛʟʏ ᴅɪꜱᴀʙʟᴇᴅ.') # Font applied
     await db.re_enable_chat(chat_id) # Use await
@@ -164,7 +164,7 @@ async def gen_invite_link(bot, message):
     try:
         link = await bot.create_chat_invite_link(chat_id)
     except Exception as e:
-        return await message.reply(f'ᴇʀʀᴏʀ ɢᴇɴᴇʀᴀᴛɪɴɢ ʟɪɴᴋ ғᴏʀ `{chat_id}`: {e}') # Font applied
+        return await message.reply(f'ᴇʀʀᴏʀ ɢᴇɴᴇʀᴀᴛɪɴɢ ʟɪɴᴋ ꜰᴏʀ `{chat_id}`: {e}') # Font applied
     await message.reply(f'ʜᴇʀᴇ ɪꜱ ᴛʜᴇ ɪɴᴠɪᴛᴇ ʟɪɴᴋ: {link.invite_link}') # Font applied
 
 @Client.on_message(filters.command('ban_user') & filters.user(ADMINS))
@@ -184,7 +184,7 @@ async def ban_a_user(bot, message):
         else:
             user = await bot.get_users(int(user_arg))
     except Exception as e:
-        return await message.reply(f'ᴇʀʀᴏʀ ғɪɴᴅɪɴɢ ᴜꜱᴇʀ: {e}') # Font applied
+        return await message.reply(f'ᴇʀʀᴏʀ ꜰɪɴᴅɪɴɢ ᴜꜱᴇʀ: {e}') # Font applied
 
     if user.id in ADMINS:
         return await message.reply('ʏᴏᴜ ᴄᴀɴɴᴏᴛ ʙᴀɴ ᴀɴ ᴀᴅᴍɪɴ!') # Font applied
@@ -194,7 +194,7 @@ async def ban_a_user(bot, message):
     await db.ban_user(user.id, reason) # Use await
     if user.id not in temp.BANNED_USERS:
         temp.BANNED_USERS.append(user.id)
-    await message.reply(f"✅ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ʙᴀɴɴᴇᴅ {user.mention}.") # Font applied
+    await message.reply(f"✔️ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ʙᴀɴɴᴇᴅ {user.mention}.") # Font applied
 
 @Client.on_message(filters.command('unban_user') & filters.user(ADMINS))
 async def unban_a_user(bot, message):
@@ -208,19 +208,19 @@ async def unban_a_user(bot, message):
         else:
             user = await bot.get_users(int(user_arg))
     except Exception as e:
-        return await message.reply(f'ᴇʀʀᴏʀ ғɪɴᴅɪɴɢ ᴜꜱᴇʀ: {e}') # Font applied
+        return await message.reply(f'ᴇʀʀᴏʀ ꜰɪɴᴅɪɴɢ ᴜꜱᴇʀ: {e}') # Font applied
 
     jar = await db.get_ban_status(user.id) # Use await
     if not jar['is_banned']:
-        return await message.reply(f"{user.mention} ɪꜱ ɴᴏᴛ ᴄᴜʀʀᴇɴᴛʟʏ ʙᴀɴɴᴇᴅ.") # Font applied
+        return await message.reply(f"{user.mention} ɪꜱ ɴᴏᴛ ᴄᴜʀʀᴇɴᴛʟʏ ʙᴀɴɴED.") # Font applied
     await db.remove_ban(user.id) # Use await
     if user.id in temp.BANNED_USERS:
         temp.BANNED_USERS.remove(user.id)
-    await message.reply(f"✅ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ᴜɴʙᴀɴɴᴇᴅ {user.mention}.") # Font applied
+    await message.reply(f"✔️ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ᴜɴʙᴀɴɴᴇᴅ {user.mention}.") # Font applied
 
 @Client.on_message(filters.command('users') & filters.user(ADMINS))
 async def list_users(bot, message):
-    raju = await message.reply('ɢᴇᴛᴛɪɴɢ ʟɪꜱᴛ ᴏғ ᴜꜱᴇʀꜱ...') # Font applied
+    raju = await message.reply('ɢᴇᴛᴛɪɴɢ ʟɪꜱᴛ ᴏꜰ ᴜꜱᴇʀꜱ...') # Font applied
     users = await db.get_all_users() # Use await
     out = "ᴜꜱᴇʀꜱ ꜱᴀᴠᴇᴅ ɪɴ ᴅᴀᴛᴀʙᴀꜱᴇ ᴀʀᴇ:\n\n" # Font applied
     count = 0
@@ -230,7 +230,7 @@ async def list_users(bot, message):
         if user.get('ban_status', {}).get('is_banned', False): # Safer access
             out += ' (ʙᴀɴɴᴇᴅ ᴜꜱᴇʀ)' # Font applied
         if user.get('verify_status', {}).get('is_verified', False): # Safer access
-             out += ' (ᴠᴇʀɪғɪᴇᴅ ᴜꜱᴇʀ)' # Font applied
+             out += ' (ᴠᴇʀɪꜰɪᴇᴅ ᴜꜱᴇʀ)' # Font applied
         out += '\n\n'
         # Send in chunks if too long
         if len(out) > 3800:
@@ -249,13 +249,13 @@ async def list_users(bot, message):
             await raju.edit_text(out + f"\nᴛᴏᴛᴀʟ ᴜꜱᴇʀꜱ: {count}") # Edit original message
         except MessageTooLong:
             with open('users.txt', 'w+') as outfile: outfile.write(out + f"\nᴛᴏᴛᴀʟ ᴜꜱᴇʀꜱ: {count}")
-            await message.reply_document('users.txt', caption="ʟɪꜱᴛ ᴏғ ᴀʟʟ ᴜꜱᴇʀꜱ") # Font applied
+            await message.reply_document('users.txt', caption="ʟɪꜱᴛ ᴏꜰ ᴀʟʟ ᴜꜱᴇʀꜱ") # Font applied
             await raju.delete()
             os.remove('users.txt')
         except Exception as e: # Handle potential edit errors
              await raju.edit_text(f"ᴇʀʀᴏʀ ᴅɪꜱᴘʟᴀʏɪɴɢ ᴜꜱᴇʀꜱ: {e}")
     elif count == 0:
-         await raju.edit_text("ɴᴏ ᴜꜱᴇʀꜱ ғᴏᴜɴᴅ ɪɴ ᴛʜᴇ ᴅᴀᴛᴀʙᴀꜱᴇ.")
+         await raju.edit_text("ɴᴏ ᴜꜱᴇʀꜱ ꜰᴏᴜɴᴅ ɪɴ ᴛʜᴇ ᴅᴀᴛᴀʙᴀꜱᴇ.")
     else: # If message was split, delete the "Getting list..." message
         try: await raju.delete()
         except: pass
@@ -263,7 +263,7 @@ async def list_users(bot, message):
 
 @Client.on_message(filters.command('chats') & filters.user(ADMINS))
 async def list_chats(bot, message):
-    raju = await message.reply('ɢᴇᴛᴛɪɴɢ ʟɪꜱᴛ ᴏғ ᴄʜᴀᴛꜱ...') # Font applied
+    raju = await message.reply('ɢᴇᴛᴛɪɴɢ ʟɪꜱᴛ ᴏꜰ ᴄʜᴀᴛꜱ...') # Font applied
     chats = await db.get_all_chats() # Use await
     out = "ᴄʜᴀᴛꜱ ꜱᴀᴠᴇᴅ ɪɴ ᴅᴀᴛᴀʙᴀꜱᴇ ᴀʀᴇ:\n\n" # Font applied
     count = 0
@@ -290,13 +290,13 @@ async def list_chats(bot, message):
             await raju.edit_text(out + f"\nᴛᴏᴛᴀʟ ᴄʜᴀᴛꜱ: {count}") # Edit original message
         except MessageTooLong:
             with open('chats.txt', 'w+') as outfile: outfile.write(out + f"\nᴛᴏᴛᴀʟ ᴄʜᴀᴛꜱ: {count}")
-            await message.reply_document('chats.txt', caption="ʟɪꜱᴛ ᴏғ ᴀʟʟ ᴄʜᴀᴛꜱ") # Font applied
+            await message.reply_document('chats.txt', caption="ʟɪꜱᴛ ᴏꜰ ᴀʟʟ ᴄʜᴀᴛꜱ") # Font applied
             await raju.delete()
             os.remove('chats.txt')
         except Exception as e: # Handle potential edit errors
             await raju.edit_text(f"ᴇʀʀᴏʀ ᴅɪꜱᴘʟᴀʏɪɴɢ ᴄʜᴀᴛꜱ: {e}")
     elif count == 0:
-        await raju.edit_text("ɴᴏ ᴄʜᴀᴛꜱ ғᴏᴜɴᴅ ɪɴ ᴛʜᴇ ᴅᴀᴛᴀʙᴀꜱᴇ.")
+        await raju.edit_text("ɴᴏ ᴄʜᴀᴛꜱ ꜰᴏᴜɴᴅ ɪɴ ᴛʜᴇ ᴅᴀᴛᴀʙᴀꜱᴇ.")
     else: # If message was split, delete the "Getting list..." message
         try: await raju.delete()
         except: pass
@@ -315,5 +315,7 @@ async def join_reqs(client, message: ChatJoinRequest):
 @Client.on_message(filters.command("delreq") & filters.private & filters.user(ADMINS))
 async def del_requests(client, message):
     await db.del_join_req() # Use await
-    await message.reply('ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ᴅᴇʟᴇᴛᴇᴅ ᴀʟʟ ᴘᴇɴᴅɪɴɢ ᴊᴏɪɴ ʀᴇǫᴜᴇꜱᴛꜱ ғʀᴏᴍ ᴅᴀᴛᴀʙᴀꜱᴇ.') # Font applied
+    await message.reply('ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ᴅᴇʟᴇᴛᴇᴅ ᴀʟʟ ᴘᴇɴᴅɪɴɢ ᴊᴏɪɴ ʀᴇǫᴜᴇꜱᴛꜱ ꜰʀᴏᴍ ᴅᴀᴛᴀʙᴀꜱᴇ.') # Font applied
 
+
+}
