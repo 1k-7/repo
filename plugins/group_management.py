@@ -36,12 +36,12 @@ async def ban_chat_user(client, message):
     try:
         user = (await client.get_chat_member(message.chat.id, user_id)).user
     except Exception as e:
-        return await message.reply_text(f"ᴄᴀɴ'ᴛ ғɪɴᴅ ᴛʜᴀᴛ ᴜꜱᴇʀ ɪɴ ᴛʜɪꜱ ɢʀᴏᴜᴘ.\nᴇʀʀᴏʀ: {e}") # Font applied
+        return await message.reply_text(f"ᴄᴀɴ'ᴛ ꜰɪɴᴅ ᴛʜᴀᴛ ᴜꜱᴇʀ ɪɴ ᴛʜɪꜱ ɢʀᴏᴜᴘ.\nᴇʀʀᴏʀ: {e}") # Font applied
     try:
         await client.ban_chat_member(message.chat.id, user.id) # Use user.id for banning
     except Exception as e:
         return await message.reply_text(f"ɪ ᴅᴏɴ'ᴛ ʜᴀᴠᴇ ᴘᴇʀᴍɪꜱꜱɪᴏɴ ᴛᴏ ʙᴀɴ ᴜꜱᴇʀꜱ.\nᴇʀʀᴏʀ: {e}") # Font applied
-    await message.reply_text(f'✅ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ʙᴀɴɴᴇᴅ {user.mention} ғʀᴏᴍ {message.chat.title}!') # Font applied
+    await message.reply_text(f'✔️ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ʙᴀɴɴᴇᴅ {user.mention} ꜰʀᴏᴍ {message.chat.title}!') # Font applied
 
 
 @Client.on_message(filters.command('mute') & filters.group)
@@ -62,12 +62,12 @@ async def mute_chat_user(client, message):
     try:
         user = (await client.get_chat_member(message.chat.id, user_id)).user
     except Exception as e:
-        return await message.reply_text(f"ᴄᴀɴ'ᴛ ғɪɴᴅ ᴛʜᴀᴛ ᴜꜱᴇʀ ɪɴ ᴛʜɪꜱ ɢʀᴏᴜᴘ.\nᴇʀʀᴏʀ: {e}") # Font applied
+        return await message.reply_text(f"ᴄᴀɴ'ᴛ ꜰɪɴᴅ ᴛʜᴀᴛ ᴜꜱᴇʀ ɪɴ ᴛʜɪꜱ ɢʀᴏᴜᴘ.\nᴇʀʀᴏʀ: {e}") # Font applied
     try:
         await client.restrict_chat_member(message.chat.id, user.id, ChatPermissions()) # Use user.id
     except Exception as e:
         return await message.reply_text(f"ɪ ᴅᴏɴ'ᴛ ʜᴀᴠᴇ ᴘᴇʀᴍɪꜱꜱɪᴏɴ ᴛᴏ ᴍᴜᴛᴇ ᴜꜱᴇʀꜱ.\nᴇʀʀᴏʀ: {e}") # Font applied
-    await message.reply_text(f'✅ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ᴍᴜᴛᴇᴅ {user.mention} ɪɴ {message.chat.title}.') # Font applied
+    await message.reply_text(f'✔️ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ᴍᴜᴛᴇᴅ {user.mention} ɪɴ {message.chat.title}.') # Font applied
 
 
 @Client.on_message(filters.command(["unban", "unmute"]) & filters.group)
@@ -89,10 +89,9 @@ async def unban_chat_user(client, message):
     try:
         user = await client.get_users(user_id)
     except Exception as e:
-         return await message.reply_text(f"ᴄᴏᴜʟᴅ ɴᴏᴛ ғɪɴᴅ ᴜꜱᴇʀ.\nᴇʀʀᴏʀ: {e}") # Font applied
+         return await message.reply_text(f"ᴄᴏᴜʟᴅ ɴᴏᴛ ꜰɪɴᴅ ᴜꜱᴇʀ.\nᴇʀʀᴏʀ: {e}") # Font applied
     try:
         await client.unban_chat_member(message.chat.id, user.id) # Use user.id
     except Exception as e:
         return await message.reply_text(f"ɪ ᴅᴏɴ'ᴛ ʜᴀᴠᴇ ᴘᴇʀᴍɪꜱꜱɪᴏɴ ᴛᴏ {message.command[0]} ᴜꜱᴇʀꜱ, ᴏʀ ᴛʜᴇ ᴜꜱᴇʀ ɪꜱ ɴᴏᴛ ʀᴇꜱᴛʀɪᴄᴛᴇᴅ.\nᴇʀʀᴏʀ: {e}") # Font applied
-    await message.reply_text(f'✅ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ {message.command[0].upper()}ED {user.mention} ɪɴ {message.chat.title}.') # Font applied
-
+    await message.reply_text(f'✔️ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ {message.command[0].upper()}ED {user.mention} ɪɴ {message.chat.title}.') # Font applied

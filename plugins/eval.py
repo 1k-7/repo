@@ -11,7 +11,7 @@ async def executor(client, message):
     try:
         code = message.text.split(" ", 1)[1]
     except:
-        return await message.reply('Command Incomplete!\nUsage: /eval your_python_code')
+        return await message.reply('ᴄᴏᴍᴍᴀɴᴅ ɪɴᴄᴏᴍᴘʟᴇᴛᴇ!\nᴜꜱᴀɢᴇ: /ᴇᴠᴀʟ ʏᴏᴜʀ_ᴘʏᴛʜᴏɴ_ᴄᴏᴅᴇ')
     old_stderr = sys.stderr
     old_stdout = sys.stdout
     redirected_output = sys.stdout = StringIO()
@@ -33,8 +33,8 @@ async def executor(client, message):
     elif stdout:
         evaluation = stdout
     else:
-        evaluation = "Success!"
-    final_output = f"Output:\n\n<code>{evaluation}</code>"
+        evaluation = "ꜱᴜᴄᴄᴇꜱꜱ!"
+    final_output = f"ᴏᴜᴛᴘᴜᴛ:\n\n<code>{evaluation}</code>"
     try:
         await message.reply(final_output)
     except MessageTooLong:
