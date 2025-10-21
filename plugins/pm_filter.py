@@ -8,6 +8,7 @@ from hydrogram.errors import ListenerTimeout, MessageNotModified, FloodWait
 from hydrogram.errors.exceptions.bad_request_400 import MediaEmpty, PhotoInvalidDimensions, WebpageMediaEmpty
 # Assuming Script.py also has its strings modified or provides default values
 from Script import script
+import urllib.parse
 from datetime import datetime, timedelta, timezone
 import pytz
 from info import (PICS, TUTORIAL, ADMINS, URL, MAX_BTN, BIN_CHANNEL,
@@ -535,7 +536,7 @@ async def advantage_spoll_choker(bot, query: CallbackQuery):
 async def cb_handler(client: Client, query: CallbackQuery):
     data = query.data
     # Acknowledge most button presses quickly
-    if data and data not in ["buttons"] and not data.startswith(("set_", "default_", "delete", "un", "kick_", "spolling", "send_all", "get_del_")):
+    if data and data not in ["buttons"] and not data.startswith(("set_", "default_", "delete", "un", "kick_", "spolling", "send_all", "get_del_", "file")):
         try:
              await query.answer()
         except: # Ignore if acknowledging fails
@@ -964,7 +965,8 @@ async def auto_filter(client, msg, s, spoll=False):
 
 async def advantage_spell_chok(message, s):
     search = message.text
-    google_url = f"https://www.google.com/search?q={re.sub(r' ', '+', search)}"
+    safe_search = urllib.parse.quote_plus(search)
+google_url = f"https://www.google.com/search?q={safe_search}"
     btn = [[ InlineKeyboardButton("❓ ʜᴏᴡ ᴛᴏ", callback_data='instructions'), InlineKeyboardButton("🔎 ɢᴏᴏɢʟᴇ", url=google_url) ]]
     try: movies = await get_poster(search, bulk=True)
     except Exception as e: logger.error(f"Spell check poster error: {e}"); movies = None

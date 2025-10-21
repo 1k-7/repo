@@ -26,7 +26,7 @@ async def users_broadcast(bot, message):
         pin = True
     else:
         pin = False
-    users = await db.get_all_users()
+    users = db.get_all_users()
     b_msg = message.reply_to_message
     b_sts = await message.reply_text(text='ʙʀᴏᴀᴅᴄᴀꜱᴛɪɴɢ ʏᴏᴜʀ ᴜꜱᴇʀꜱ ᴍᴇꜱꜱᴀɢᴇꜱ...') # Font applied
     start_time = time.time()

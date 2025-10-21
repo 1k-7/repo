@@ -221,7 +221,7 @@ async def unban_a_user(bot, message):
 @Client.on_message(filters.command('users') & filters.user(ADMINS))
 async def list_users(bot, message):
     raju = await message.reply('ɢᴇᴛᴛɪɴɢ ʟɪꜱᴛ ᴏꜰ ᴜꜱᴇʀꜱ...') # Font applied
-    users = await db.get_all_users() # Use await
+    users = db.get_all_users() # Dont Use await
     out = "ᴜꜱᴇʀꜱ ꜱᴀᴠᴇᴅ ɪɴ ᴅᴀᴛᴀʙᴀꜱᴇ ᴀʀᴇ:\n\n" # Font applied
     count = 0
     for user in users:
@@ -264,7 +264,7 @@ async def list_users(bot, message):
 @Client.on_message(filters.command('chats') & filters.user(ADMINS))
 async def list_chats(bot, message):
     raju = await message.reply('ɢᴇᴛᴛɪɴɢ ʟɪꜱᴛ ᴏꜰ ᴄʜᴀᴛꜱ...') # Font applied
-    chats = await db.get_all_chats() # Use await
+    chats = db.get_all_chats() # No Use await
     out = "ᴄʜᴀᴛꜱ ꜱᴀᴠᴇᴅ ɪɴ ᴅᴀᴛᴀʙᴀꜱᴇ ᴀʀᴇ:\n\n" # Font applied
     count = 0
     for chat in chats:
