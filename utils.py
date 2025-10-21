@@ -340,7 +340,7 @@ def get_wish():
     try: time_now = datetime.now(pytz.timezone(TIME_ZONE)); hour = int(time_now.strftime("%H"))
     except Exception as e: logger.error(f"Get wish timezone error: {e}"); hour = datetime.now().hour # Fallback
     if 5 <= hour < 12: return "ɢᴏᴏᴅ ᴍᴏʀɴɪɴɢ ☀️"
-    elif 12 <= hour < 18: return "ɢᴏᴏᴅ ᴀғᴛᴇʀɴᴏᴏɴ 🌤️"
+    elif 12 <= hour < 18: return "ɢᴏᴏᴅ ᴀꜰᴛᴇʀɴᴏᴏɴ 🌤️"
     else: return "ɢᴏᴏᴅ ᴇᴠᴇɴɪɴɢ 🌙"
 
 def get_seconds(time_string):
@@ -355,4 +355,5 @@ def get_seconds(time_string):
     elif unit.startswith('month'): return value * 86400 * 30 # Approx
     elif unit.startswith('y'): return value * 86400 * 365 # Approx
     else: return 0
+
 
