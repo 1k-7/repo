@@ -26,7 +26,7 @@ async def inline_search(bot, query: InlineQuery):
     is_fsub = await is_subscribed(bot, query) # Pass the query object
     if is_fsub:
         await query.answer(results=[], cache_time=0,
-                           switch_pm_text="⚠️ ᴊᴏɪɴ ᴄʜᴀɴɴᴇʟ(ꜱ) ғɪʀꜱᴛ!", # Font applied
+                           switch_pm_text="⚠️ ᴊᴏɪɴ ᴄʜᴀɴɴᴇʟ(ꜱ) ꜰɪʀꜱᴛ!", # Font applied
                            switch_pm_parameter="inline_fsub")
         return
 
@@ -38,7 +38,7 @@ async def inline_search(bot, query: InlineQuery):
     if IS_VERIFY and (not verify_status.get('is_verified') or is_expired):
         if is_expired: await update_verify_status(user_id, is_verified=False) # Mark expired
         await query.answer(results=[], cache_time=0,
-                           switch_pm_text="🔐 ʏᴏᴜ ɴᴇᴇᴅ ᴛᴏ ᴠᴇʀɪғʏ!", # Font applied
+                           switch_pm_text="🔐 ʏᴏᴜ ɴᴇᴇᴅ ᴛᴏ ᴠᴇʀɪꜰʏ!", # Font applied
                            switch_pm_parameter="inline_verify")
         return
 
@@ -102,7 +102,7 @@ async def inline_search(bot, query: InlineQuery):
 
     # Answer the query
     if results:
-        switch_pm_text = f"✅ {total} ғᴏʀ: {string}" if string else f"✅ {total} ʀᴇꜱᴜʟᴛꜱ" # Font applied
+        switch_pm_text = f"✔️ {total} ꜰᴏʀ: {string}" if string else f"✔️ {total} ʀᴇꜱᴜʟᴛꜱ" # Font applied
         try:
             await query.answer(
                 results=results,
@@ -117,7 +117,7 @@ async def inline_search(bot, query: InlineQuery):
                   await query.answer(results=[], cache_time=5, switch_pm_text="❌ ᴇʀʀᴏʀ.", switch_pm_parameter="start") # Font applied
              except: pass
     else:
-        switch_pm_text = f"🚫 ɴᴏ ʀᴇꜱᴜʟᴛꜱ ғᴏʀ: {string}" if string else "🚫 ɴᴏ ʀᴇꜱᴜʟᴛꜱ" # Font applied
+        switch_pm_text = f"🚫 ɴᴏ ʀᴇꜱᴜʟᴛꜱ ꜰᴏʀ: {string}" if string else "🚫 ɴᴏ ʀᴇꜱᴜʟᴛꜱ" # Font applied
         await query.answer(
             results=[],
             cache_time=cache_time,
@@ -129,7 +129,7 @@ async def inline_search(bot, query: InlineQuery):
 def get_reply_markup(s):
     # Button text: Use font cautiously due to length limits
     buttons = [[ InlineKeyboardButton('🔄 ꜱᴇᴀʀᴄʜ ᴀɢᴀɪɴ', switch_inline_query_current_chat=s or '') ],
-               [ InlineKeyboardButton('✨ ᴜᴘᴅᴀᴛᴇꜱ', url=UPDATES_LINK),
-                 InlineKeyboardButton('💬 ꜱᴜᴘᴘᴏʀᴛ', url=SUPPORT_LINK) ]]
+               [ InlineKeyboardButton('• ᴜᴘᴅᴀᴛᴇꜱ •', url=UPDATES_LINK),
+                 InlineKeyboardButton('• ꜱᴜᴘᴘᴏʀᴛ •', url=SUPPORT_LINK) ]]
     return InlineKeyboardMarkup(buttons)
 
