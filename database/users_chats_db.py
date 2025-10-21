@@ -284,7 +284,7 @@ class Database:
         except Exception as e: logger.error(f"Error get_files_db_size: {e}"); return 0
 
     def get_second_files_db_size(self):
-        if second_files_db:
+        if second_files_db is not None:
              try: return second_files_db.command("dbstats")['dataSize']
              except Exception as e: logger.error(f"Error get_second_files_db_size: {e}"); return 0
         return 0
