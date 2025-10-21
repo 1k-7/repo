@@ -3,8 +3,11 @@ from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, InlineQu
 from database.ia_filterdb import get_search_results
 # Removed is_premium import
 from utils import get_size, temp, get_verify_status, is_subscribed # Removed is_premium
-from info import CACHE_TIME, SUPPORT_LINK, UPDATES_LINK, FILE_CAPTION, IS_VERIFY
+from info import CACHE_TIME, SUPPORT_LINK, UPDATES_LINK, FILE_CAPTION, IS_VERIFY, PROTECT_CONTENT # Added PROTECT_CONTENT
 import logging
+from datetime import datetime # Import datetime
+import pytz # Import pytz
+
 
 logger = logging.getLogger(__name__)
 cache_time = CACHE_TIME # Use cache time from info
@@ -23,11 +26,11 @@ async def inline_search(bot, query: InlineQuery):
     is_fsub = await is_subscribed(bot, query) # Pass the query object
     if is_fsub:
         await query.answer(results=[], cache_time=0,
-                           switch_pm_text="⚠️ ᴊᴏɪɴ ᴄʜᴀɴɴᴇʟ(s) ғɪʀsᴛ!",
+                           switch_pm_text="⚠️ ᴊᴏɪɴ ᴄʜᴀɴɴᴇʟ(ꜱ) ғɪʀꜱᴛ!", # Font applied
                            switch_pm_parameter="inline_fsub")
         return
 
-    # Verify Check (No premium bypass)
+    # Verify Check
     verify_status = await get_verify_status(user_id)
     # Check expiry if verified
     is_expired = isinstance(verify_status.get('expire_time'), datetime) and datetime.now(pytz.utc) > verify_status['expire_time'].replace(tzinfo=pytz.utc)
@@ -35,23 +38,23 @@ async def inline_search(bot, query: InlineQuery):
     if IS_VERIFY and (not verify_status.get('is_verified') or is_expired):
         if is_expired: await update_verify_status(user_id, is_verified=False) # Mark expired
         await query.answer(results=[], cache_time=0,
-                           switch_pm_text="🔐 ʏᴏᴜ ɴᴇᴇᴅ ᴛᴏ ᴠᴇʀɪғʏ!",
+                           switch_pm_text="🔐 ʏᴏᴜ ɴᴇᴇᴅ ᴛᴏ ᴠᴇʀɪғʏ!", # Font applied
                            switch_pm_parameter="inline_verify")
         return
 
     # Banned Check
     if is_banned(query):
         await query.answer(results=[], cache_time=0,
-                           switch_pm_text="🚫 ʏᴏᴜ'ʀᴇ ʙᴀɴɴᴇᴅ!",
+                           switch_pm_text="🚫 ʏᴏᴜ'ʀᴇ ʙᴀɴɴᴇᴅ!", # Font applied
                            switch_pm_parameter="start")
         return
 
     results = []
     string = query.query.strip()
-    # Minimum query length check (optional but recommended)
+    # Minimum query length check
     if len(string) < 2:
          await query.answer(results=[], cache_time=cache_time,
-                            switch_pm_text="➡️ ᴛʏᴘᴇ ᴀᴛ ʟᴇᴀsᴛ 2 ᴄʜᴀʀᴀᴄᴛᴇʀs...",
+                            switch_pm_text="➡️ ᴛʏᴘᴇ ᴀᴛ ʟᴇᴀꜱᴛ ₂ ᴄʜᴀʀᴀᴄᴛᴇʀꜱ...", # Font applied
                             switch_pm_parameter="start")
          return
 
@@ -64,7 +67,7 @@ async def inline_search(bot, query: InlineQuery):
     except Exception as e:
         logger.error(f"Inline search error for '{string}': {e}", exc_info=True)
         await query.answer(results=[], cache_time=5,
-                           switch_pm_text="❌ ᴇʀʀᴏʀ sᴇᴀʀᴄʜɪɴɢ.",
+                           switch_pm_text="❌ ᴇʀʀᴏʀ ꜱᴇᴀʀᴄʜɪɴɢ.", # Font applied
                            switch_pm_parameter="start")
         return
 
@@ -73,7 +76,7 @@ async def inline_search(bot, query: InlineQuery):
         for file in files:
             caption_text = file.get('caption', '')
             try:
-                 # Use FILE_CAPTION from info/Script
+                 # Use FILE_CAPTION from info/Script (Assume font is handled there if needed)
                  f_caption = FILE_CAPTION.format(
                      file_name=file.get('file_name', 'N/A'),
                      file_size=get_size(file.get('file_size', 0)),
@@ -85,10 +88,12 @@ async def inline_search(bot, query: InlineQuery):
             try:
                 results.append(
                     InlineQueryResultCachedDocument(
+                        # Title and Description often have limited font support in clients
                         title=file.get('file_name', 'N/A')[:60], # Limit title length
                         document_file_id=file['_id'],
                         caption=f_caption[:1024], # Limit caption
-                        description=f"sɪᴢᴇ: {get_size(file.get('file_size', 0))}",
+                        description=f"ꜱɪᴢᴇ: {get_size(file.get('file_size', 0))}", # Font partially applied
+                        # Button text should generally avoid complex fonts
                         reply_markup=get_reply_markup(string)
                     )
                 )
@@ -97,7 +102,7 @@ async def inline_search(bot, query: InlineQuery):
 
     # Answer the query
     if results:
-        switch_pm_text = f"✅ {total} ғᴏʀ: {string}" if string else f"✅ {total} ʀᴇsᴜʟᴛs"
+        switch_pm_text = f"✅ {total} ғᴏʀ: {string}" if string else f"✅ {total} ʀᴇꜱᴜʟᴛꜱ" # Font applied
         try:
             await query.answer(
                 results=results,
@@ -109,10 +114,10 @@ async def inline_search(bot, query: InlineQuery):
         except Exception as e:
              logger.error(f"Error answering inline query '{string}': {e}", exc_info=True)
              try: # Fallback error answer
-                  await query.answer(results=[], cache_time=5, switch_pm_text="❌ ᴇʀʀᴏʀ.", switch_pm_parameter="start")
+                  await query.answer(results=[], cache_time=5, switch_pm_text="❌ ᴇʀʀᴏʀ.", switch_pm_parameter="start") # Font applied
              except: pass
     else:
-        switch_pm_text = f"🚫 ɴᴏ ʀᴇsᴜʟᴛs ғᴏʀ: {string}" if string else "🚫 ɴᴏ ʀᴇsᴜʟᴛs"
+        switch_pm_text = f"🚫 ɴᴏ ʀᴇꜱᴜʟᴛꜱ ғᴏʀ: {string}" if string else "🚫 ɴᴏ ʀᴇꜱᴜʟᴛꜱ" # Font applied
         await query.answer(
             results=[],
             cache_time=cache_time,
@@ -122,8 +127,9 @@ async def inline_search(bot, query: InlineQuery):
 
 
 def get_reply_markup(s):
-    # Updated style
-    buttons = [[ InlineKeyboardButton('🔄 sᴇᴀʀᴄʜ ᴀɢᴀɪɴ', switch_inline_query_current_chat=s or '') ],
-               [ InlineKeyboardButton('✨ ᴜᴘᴅᴀᴛᴇs', url=UPDATES_LINK),
-                 InlineKeyboardButton('💬 sᴜᴘᴘᴏʀᴛ', url=SUPPORT_LINK) ]]
+    # Button text: Use font cautiously due to length limits
+    buttons = [[ InlineKeyboardButton('🔄 ꜱᴇᴀʀᴄʜ ᴀɢᴀɪɴ', switch_inline_query_current_chat=s or '') ],
+               [ InlineKeyboardButton('✨ ᴜᴘᴅᴀᴛᴇꜱ', url=UPDATES_LINK),
+                 InlineKeyboardButton('💬 ꜱᴜᴘᴘᴏʀᴛ', url=SUPPORT_LINK) ]]
     return InlineKeyboardMarkup(buttons)
+
