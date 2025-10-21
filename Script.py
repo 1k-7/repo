@@ -18,10 +18,10 @@ class script(object):
     # Reworked STATUS_TXT
     STATUS_TXT = """<blockquote>ʙᴏᴛ ꜱᴛᴀᴛɪꜱᴛɪᴄꜱ</blockquote>
 
-<blockquote>╭─[ ᴜꜱᴇʀ ɪɴꜰᴏ ]────➣
+<blockquote>╭─[ ᴜꜱᴇʀ ɪɴꜰᴏ ]───➣
 │ 👤 ᴛᴏᴛᴀʟ ᴜꜱᴇʀꜱ: <code>{}</code>
 │ 👥 ᴛᴏᴛᴀʟ ᴄʜᴀᴛꜱ: <code>{}</code>
-╰────────────────────➣
+╰──────────────➣
 </blockquote>
 
 <blockquote>╭─[ ᴅᴀᴛᴀʙᴀꜱᴇ ꜱᴛᴀᴛꜱ ]────➣
@@ -31,7 +31,7 @@ class script(object):
 │
 │ 🗂️ ᴅʙ¹ ꜰɪʟᴇꜱ: <code>{}</code> | ꜱɪᴢᴇ: <code>{}</code>
 │ 🗂️ ᴅʙ² ꜰɪʟᴇꜱ: <code>{}</code> | ꜱɪᴢᴇ: <code>{}</code>
-╰───────────────────────────────➣
+╰─────────────────────────➣
 </blockquote>
 
 <blockquote> ⏳ ʙᴏᴛ ᴜᴘᴛɪᴍᴇ: <code>{}</code> </blockquote>
