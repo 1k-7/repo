@@ -18,10 +18,10 @@ class script(object):
     # Reworked STATUS_TXT
     STATUS_TXT = """<blockquote>ʙᴏᴛ ꜱᴛᴀᴛɪꜱᴛɪᴄꜱ</blockquote>
 
-<blockquote>╭─[ ᴜꜱᴇʀ ɪɴꜰᴏ ]────➣
+<blockquote>╭─[ ᴜꜱᴇʀ ɪɴꜰᴏ ]──────────➣
 │ 👤 ᴛᴏᴛᴀʟ ᴜꜱᴇʀꜱ: <code>{}</code>
 │ 👥 ᴛᴏᴛᴀʟ ᴄʜᴀᴛꜱ: <code>{}</code>
-╰───────────────➣</blockquote>
+╰─────────────────────➣</blockquote>
 
 <blockquote>╭─[ ᴅᴀᴛᴀʙᴀꜱᴇ ꜱᴛᴀᴛꜱ ]────➣
 │ 🗳️ ʙᴏᴛ ᴅᴀᴛᴀ ꜱɪᴢᴇ: <code>{}</code>
@@ -32,7 +32,7 @@ class script(object):
 │ 🗂️ ᴅʙ² ꜰɪʟᴇꜱ: <code>{}</code> | ꜱɪᴢᴇ: <code>{}</code>
 ╰─────────────────────➣</blockquote>
 
-<blockquote
+<blockquote>
 ⏳ ʙᴏᴛ ᴜᴘᴛɪᴍᴇ: <code>{}</code> </blockquote>
 """ # Removed premium user count
 
