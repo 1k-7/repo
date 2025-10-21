@@ -118,4 +118,3 @@ class script(object):
 
     # Removed PLAN_TXT
 
-}
