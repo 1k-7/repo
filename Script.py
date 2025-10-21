@@ -21,9 +21,7 @@ class script(object):
 <blockquote>╭─[ ᴜꜱᴇʀ ɪɴꜰᴏ ]───➣
 │ 👤 ᴛᴏᴛᴀʟ ᴜꜱᴇʀꜱ: <code>{}</code>
 │ 👥 ᴛᴏᴛᴀʟ ᴄʜᴀᴛꜱ: <code>{}</code>
-╰──────────────➣
-</blockquote>
-
+╰──────────────➣</blockquote>
 <blockquote>╭─[ ᴅᴀᴛᴀʙᴀꜱᴇ ꜱᴛᴀᴛꜱ ]────➣
 │ 🗳️ ʙᴏᴛ ᴅᴀᴛᴀ ꜱɪᴢᴇ: <code>{}</code>
 │
@@ -31,9 +29,7 @@ class script(object):
 │
 │ 🗂️ ᴅʙ¹ ꜰɪʟᴇꜱ: <code>{}</code> | ꜱɪᴢᴇ: <code>{}</code>
 │ 🗂️ ᴅʙ² ꜰɪʟᴇꜱ: <code>{}</code> | ꜱɪᴢᴇ: <code>{}</code>
-╰─────────────────────────➣
-</blockquote>
-
+╰─────────────────────────➣</blockquote>
 <blockquote> ⏳ ʙᴏᴛ ᴜᴘᴛɪᴍᴇ: <code>{}</code> </blockquote>
 """ # Removed premium user count
 
