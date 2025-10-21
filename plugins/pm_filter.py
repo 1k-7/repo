@@ -966,8 +966,10 @@ async def auto_filter(client, msg, s, spoll=False):
 async def advantage_spell_chok(message, s):
     search = message.text
     safe_search = urllib.parse.quote_plus(search)
-google_url = f"https://www.google.com/search?q={safe_search}"
+    google_url = f"https://www.google.com/search?q={safe_search}"
+    # --- Fix: Remove indentation from the next line ---
     btn = [[ InlineKeyboardButton("❓ ʜᴏᴡ ᴛᴏ", callback_data='instructions'), InlineKeyboardButton("🔎 ɢᴏᴏɢʟᴇ", url=google_url) ]]
+    # --- End Fix ---
     try: movies = await get_poster(search, bulk=True)
     except Exception as e: logger.error(f"Spell check poster error: {e}"); movies = None
 
