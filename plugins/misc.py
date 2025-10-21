@@ -11,102 +11,121 @@ import os
 @Client.on_message(filters.command('id'))
 async def showid(client, message):
     chat_type = message.chat.type
-    replied_to_msg = bool(message.reply_to_message)
-    if replied_to_msg:
-        return await message.reply_text(f"""The forwarded message channel {replied_to_msg.chat.title}'s id is, <code>{replied_to_msg.chat.id}</code>.""")
-    if chat_type == enums.ChatType.PRIVATE:
-        await message.reply_text(f'★ User ID: <code>{message.from_user.id}</code>')
+    replied_to_msg = message.reply_to_message # Use directly
 
+    if replied_to_msg and replied_to_msg.forward_from_chat: # Check specifically for forwarded from channel
+        return await message.reply_text(f"ᴛʜᴇ ғᴏʀᴡᴀʀᴅᴇᴅ ᴍᴇꜱꜱᴀɢᴇ'ꜱ ᴏʀɪɢɪɴᴀʟ ᴄʜᴀɴɴᴇʟ, {replied_to_msg.forward_from_chat.title}, ʜᴀꜱ ɪᴅ: <code>{replied_to_msg.forward_from_chat.id}</code>.") # Font applied
+    elif replied_to_msg and replied_to_msg.from_user: # Check for replied to user
+        return await message.reply_text(f"ʀᴇᴘʟɪᴇᴅ ᴛᴏ ᴜꜱᴇʀ ɪᴅ: <code>{replied_to_msg.from_user.id}</code>.") # Font applied
+    elif chat_type == enums.ChatType.PRIVATE:
+        await message.reply_text(f'ʏᴏᴜʀ ᴜꜱᴇʀ ɪᴅ: <code>{message.from_user.id}</code>') # Font applied
     elif chat_type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
-        await message.reply_text(f'★ Group ID: <code>{message.chat.id}</code>')
-
+        await message.reply_text(f'ᴛʜɪꜱ ɢʀᴏᴜᴘ ɪᴅ: <code>{message.chat.id}</code>') # Font applied
     elif chat_type == enums.ChatType.CHANNEL:
-        await message.reply_text(f'★ Channel ID: <code>{message.chat.id}</code>')
+        await message.reply_text(f'ᴛʜɪꜱ ᴄʜᴀɴɴᴇʟ ɪᴅ: <code>{message.chat.id}</code>') # Font applied
 
 
 @Client.on_message(filters.command('speedtest') & filters.user(ADMINS))
 async def speedtest(client, message):
     #from - https://github.com/weebzone/WZML-X/blob/master/bot/modules/speedtest.py
-    msg = await message.reply_text("Initiating Speedtest...")
+    msg = await message.reply_text("ɪɴɪᴛɪᴀᴛɪɴɢ ꜱᴘᴇᴇᴅᴛᴇꜱᴛ...") # Font applied
     try:
         speed = Speedtest()
         speed.get_best_server()
+        speed.download()
+        speed.upload()
+        speed.results.share()
+        result = speed.results.dict()
     except (ConfigRetrievalError, SpeedtestBestServerFailure):
-        await msg.edit("Can't connect to Server at the Moment, Try Again Later !")
+        await msg.edit("ᴄᴀɴ'ᴛ ᴄᴏɴɴᴇᴄᴛ ᴛᴏ ꜱᴇʀᴠᴇʀ ᴀᴛ ᴛʜᴇ ᴍᴏᴍᴇɴᴛ, ᴛʀʏ ᴀɢᴀɪɴ ʟᴀᴛᴇʀ!") # Font applied
         return
-    speed.download()
-    speed.upload()
-    speed.results.share()
-    result = speed.results.dict()
-    photo = result['share']
+    except Exception as e:
+        await msg.edit(f"ꜱᴘᴇᴇᴅᴛᴇꜱᴛ ғᴀɪʟᴇᴅ: {e}") # Font applied
+        return
+
+    photo = result.get('share')
+    # Font applied to labels
     text = f'''
-➲ <b>SPEEDTEST INFO</b>
-┠ <b>Upload:</b> <code>{get_size(result['upload'])}/s</code>
-┠ <b>Download:</b>  <code>{get_size(result['download'])}/s</code>
-┠ <b>Ping:</b> <code>{result['ping']} ms</code>
-┠ <b>Time:</b> <code>{datetime.strptime(result['timestamp'], "%Y-%m-%dT%H:%M:%S.%fZ").strftime("%Y-%m-%d %H:%M:%S")}</code>
-┠ <b>Data Sent:</b> <code>{get_size(int(result['bytes_sent']))}</code>
-┖ <b>Data Received:</b> <code>{get_size(int(result['bytes_received']))}</code>
+➲ <b>ꜱᴘᴇᴇᴅᴛᴇꜱᴛ ɪɴғᴏ</b>
+┠ <b>ᴜᴘʟᴏᴀᴅ:</b> <code>{get_size(result.get('upload', 0))}/s</code>
+┠ <b>ᴅᴏᴡɴʟᴏᴀᴅ:</b>  <code>{get_size(result.get('download', 0))}/s</code>
+┠ <b>ᴘɪɴɢ:</b> <code>{result.get('ping', 'N/A')} ms</code>
+┠ <b>ᴛɪᴍᴇ:</b> <code>{result.get('timestamp', 'N/A')}</code>
+┠ <b>ᴅᴀᴛᴀ ꜱᴇɴᴛ:</b> <code>{get_size(int(result.get('bytes_sent', 0)))}</code>
+┖ <b>ᴅᴀᴛᴀ ʀᴇᴄᴇɪᴠᴇᴅ:</b> <code>{get_size(int(result.get('bytes_received', 0)))}</code>
 
-➲ <b>SPEEDTEST SERVER</b>
-┠ <b>Name:</b> <code>{result['server']['name']}</code>
-┠ <b>Country:</b> <code>{result['server']['country']}, {result['server']['cc']}</code>
-┠ <b>Sponsor:</b> <code>{result['server']['sponsor']}</code>
-┠ <b>Latency:</b> <code>{result['server']['latency']}</code>
-┠ <b>Latitude:</b> <code>{result['server']['lat']}</code>
-┖ <b>Longitude:</b> <code>{result['server']['lon']}</code>
+➲ <b>ꜱᴘᴇᴇᴅᴛᴇꜱᴛ ꜱᴇʀᴠᴇʀ</b>
+┠ <b>ɴᴀᴍᴇ:</b> <code>{result.get('server', {}).get('name', 'N/A')}</code>
+┠ <b>ᴄᴏᴜɴᴛʀʏ:</b> <code>{result.get('server', {}).get('country', 'N/A')}, {result.get('server', {}).get('cc', 'N/A')}</code>
+┠ <b>ꜱᴘᴏɴꜱᴏʀ:</b> <code>{result.get('server', {}).get('sponsor', 'N/A')}</code>
+┠ <b>ʟᴀᴛᴇɴᴄʏ:</b> <code>{result.get('server', {}).get('latency', 'N/A')}</code>
+┠ <b>ʟᴀᴛɪᴛᴜᴅᴇ:</b> <code>{result.get('server', {}).get('lat', 'N/A')}</code>
+┖ <b>ʟᴏɴɢɪᴛᴜᴅᴇ:</b> <code>{result.get('server', {}).get('lon', 'N/A')}</code>
 
-➲ <b>CLIENT DETAILS</b>
-┠ <b>IP Address:</b> <code>{result['client']['ip']}</code>
-┠ <b>Latitude:</b> <code>{result['client']['lat']}</code>
-┠ <b>Longitude:</b> <code>{result['client']['lon']}</code>
-┠ <b>Country:</b> <code>{result['client']['country']}</code>
-┠ <b>ISP:</b> <code>{result['client']['isp']}</code>
-┖ <b>ISP Rating:</b> <code>{result['client']['isprating']}</code>
+➲ <b>ᴄʟɪᴇɴᴛ ᴅᴇᴛᴀɪʟꜱ</b>
+┠ <b>ɪᴘ ᴀᴅᴅʀᴇꜱꜱ:</b> <code>{result.get('client', {}).get('ip', 'N/A')}</code>
+┠ <b>ʟᴀᴛɪᴛᴜᴅᴇ:</b> <code>{result.get('client', {}).get('lat', 'N/A')}</code>
+┠ <b>ʟᴏɴɢɪᴛᴜᴅᴇ:</b> <code>{result.get('client', {}).get('lon', 'N/A')}</code>
+┠ <b>ᴄᴏᴜɴᴛʀʏ:</b> <code>{result.get('client', {}).get('country', 'N/A')}</code>
+┠ <b>ɪꜱᴘ:</b> <code>{result.get('client', {}).get('isp', 'N/A')}</code>
+┖ <b>ɪꜱᴘ ʀᴀᴛɪɴɢ:</b> <code>{result.get('client', {}).get('isprating', 'N/A')}</code>
 '''
-    await message.reply_photo(photo=photo, caption=text)
-    await msg.delete()
+    if photo:
+        await message.reply_photo(photo=photo, caption=text)
+        await msg.delete()
+    else:
+        await msg.edit(text)
 
 
 @Client.on_message(filters.command("info"))
 async def who_is(client, message):
     status_message = await message.reply_text(
-        "Fetching user info..."
+        "ғᴇᴛᴄʜɪɴɢ ᴜꜱᴇʀ ɪɴғᴏ..." # Font applied
     )
-    if message.reply_to_message:
-        from_user_id = message.reply_to_message.from_user.id
+    from_user = None
+    if message.reply_to_message and message.reply_to_message.from_user:
+        from_user = message.reply_to_message.from_user
     elif len(message.command) > 1:
-        from_user_id = message.command[1]
+        try:
+            user_arg = message.command[1]
+            if user_arg.startswith('@'):
+                from_user = await client.get_users(user_arg)
+            else:
+                from_user = await client.get_users(int(user_arg))
+        except Exception as error:
+            await status_message.edit(f'ᴇʀʀᴏʀ: {error}') # Font applied
+            return
     else:
-        from_user_id = message.from_user.id
-    try:
-        from_user = await client.get_users(from_user_id)
-    except Exception as error:
-        await status_message.edit(f'Error: {error}')
-        return
+        from_user = message.from_user
 
+    if not from_user:
+         await status_message.edit("ᴄᴏᴜʟᴅ ɴᴏᴛ ғɪɴᴅ ᴛʜᴇ ᴜꜱᴇʀ.") # Font applied
+         return
+
+    # Font applied to labels
     message_out_str = ""
-    message_out_str += f"<b>➲First Name:</b> {from_user.first_name}\n"
-    last_name = from_user.last_name or 'Not have'
-    message_out_str += f"<b>➲Last Name:</b> {last_name}\n"
-    message_out_str += f"<b>➲Telegram ID:</b> <code>{from_user.id}</code>\n"
-    username = f'@{from_user.username}' if from_user.username else 'Not have'
-    dc_id = from_user.dc_id or "Not found"
-    message_out_str += f"<b>➲Data Centre:</b> <code>{dc_id}</code>\n"
-    message_out_str += f"<b>➲Username:</b> {username}\n"
-    message_out_str += f"<b>➲Last Online:</b> {last_online(from_user)}\n"
-    message_out_str += f"<b>➲User 𝖫𝗂𝗇𝗄:</b> <a href='tg://user?id={from_user.id}'><b>Click Here</b></a>\n"
+    message_out_str += f"<b>➲ғɪʀꜱᴛ ɴᴀᴍᴇ:</b> {from_user.first_name}\n"
+    last_name = from_user.last_name or 'ɴᴏᴛ ʜᴀᴠᴇ'
+    message_out_str += f"<b>➲ʟᴀꜱᴛ ɴᴀᴍᴇ:</b> {last_name}\n"
+    message_out_str += f"<b>➲ᴛᴇʟᴇɢʀᴀᴍ ɪᴅ:</b> <code>{from_user.id}</code>\n"
+    username = f'@{from_user.username}' if from_user.username else 'ɴᴏᴛ ʜᴀᴠᴇ'
+    dc_id = from_user.dc_id or "ɴᴏᴛ ғᴏᴜɴᴅ"
+    message_out_str += f"<b>➲ᴅᴀᴛᴀ ᴄᴇɴᴛʀᴇ:</b> <code>{dc_id}</code>\n"
+    message_out_str += f"<b>➲ᴜꜱᴇʀɴᴀᴍᴇ:</b> {username}\n"
+    message_out_str += f"<b>➲ʟᴀꜱᴛ ᴏɴʟɪɴᴇ:</b> {last_online(from_user)}\n"
+    message_out_str += f"<b>➲ᴜꜱᴇʀ ʟɪɴᴋ:</b> <a href='tg://user?id={from_user.id}'><b>ᴄʟɪᴄᴋ ʜᴇʀᴇ</b></a>\n"
     if message.chat.type in [enums.ChatType.SUPERGROUP, enums.ChatType.GROUP]:
         try:
             chat_member_p = await message.chat.get_member(from_user.id)
-            joined_date = chat_member_p.joined_date.strftime('%Y.%m.%d %H:%M:%S') if chat_member_p.joined_date else 'Not found'
+            joined_date = chat_member_p.joined_date.strftime('%Y.%m.%d %H:%M:%S') if chat_member_p.joined_date else 'ɴᴏᴛ ғᴏᴜɴᴅ'
             message_out_str += (
-                "<b>➲Joined this Chat on:</b> <code>"
+                f"<b>➲ᴊᴏɪɴᴇᴅ ᴛʜɪꜱ ᴄʜᴀᴛ ᴏɴ:</b> <code>"
                 f"{joined_date}"
                 "</code>\n"
             )
         except UserNotParticipant:
-            pass
+            message_out_str += f"<b>➲ᴊᴏɪɴᴇᴅ ᴛʜɪꜱ ᴄʜᴀᴛ ᴏɴ:</b> ɴᴏᴛ ᴀ ᴍᴇᴍʙᴇʀ\n" # Font applied
+
     chat_photo = from_user.photo
     if chat_photo:
         local_user_photo = await client.download_media(
@@ -130,22 +149,27 @@ async def who_is(client, message):
     await status_message.delete()
 
 
-
 def last_online(from_user):
+    # Font applied to status descriptions
     time = ""
     if from_user.is_bot:
-        time += "🤖 Bot :("
+        time += "🤖 ʙᴏᴛ :("
     elif from_user.status == enums.UserStatus.RECENTLY:
-        time += "Recently"
+        time += "ʀᴇᴄᴇɴᴛʟʏ"
     elif from_user.status == enums.UserStatus.LAST_WEEK:
-        time += "Within the last week"
+        time += "ᴡɪᴛʜɪɴ ᴛʜᴇ ʟᴀꜱᴛ ᴡᴇᴇᴋ"
     elif from_user.status == enums.UserStatus.LAST_MONTH:
-        time += "Within the last month"
+        time += "ᴡɪᴛʜɪɴ ᴛʜᴇ ʟᴀꜱᴛ ᴍᴏɴᴛʜ"
     elif from_user.status == enums.UserStatus.LONG_AGO:
-        time += "A long time ago :("
+        time += "ᴀ ʟᴏɴɢ ᴛɪᴍᴇ ᴀɢᴏ :("
     elif from_user.status == enums.UserStatus.ONLINE:
-        time += "Currently Online"
+        time += "ᴄᴜʀʀᴇɴᴛʟʏ ᴏɴʟɪɴᴇ"
     elif from_user.status == enums.UserStatus.OFFLINE:
-        time += from_user.last_online_date.strftime("%a, %d %b %Y, %H:%M:%S")
+        try: # Add try-except for potential naive datetime
+             time += from_user.last_online_date.strftime("%Y-%m-%d %H:%M:%S")
+        except AttributeError:
+             time += "ᴜɴᴋɴᴏᴡɴ (ᴏꜰꜰʟɪɴᴇ)"
+    else:
+        time += "ᴜɴᴋɴᴏᴡɴ"
     return time
 
