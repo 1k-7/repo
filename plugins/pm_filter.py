@@ -133,7 +133,6 @@ async def next_page(bot, query: CallbackQuery):
         except:
             pass
         return
-
     files, n_offset, total = await get_search_results(query=search, offset=offset)
     try:
         n_offset = int(n_offset) if n_offset else ""
@@ -531,34 +530,56 @@ async def advantage_spoll_choker(bot, query: CallbackQuery):
         try: await query.message.reply_to_message.delete()
         except: pass
 
+# --- Corrected cb_handler ---
 @Client.on_callback_query()
 async def cb_handler(client: Client, query: CallbackQuery):
     data = query.data
     # Acknowledge most button presses quickly
-    if data and data not in ["buttons"] and not data.startswith(("set_", "default_", "delete", "un", "kick_", "spolling")):
-        try: await query.answer()
-        except: pass
+    if data and data not in ["buttons"] and not data.startswith(("set_", "default_", "delete", "un", "kick_", "spolling", "send_all", "get_del_")):
+        try:
+             await query.answer()
+        except: # Ignore if acknowledging fails
+             pass
 
     loop = asyncio.get_running_loop()
+
     if data == "close_data":
         try: user = query.message.reply_to_message.from_user.id
         except: user = query.from_user.id
         if int(user) != 0 and query.from_user.id != int(user): return await query.answer(f"ʜᴇʟʟᴏ {query.from_user.first_name},\nɴᴏᴛ ғᴏʀ ʏᴏᴜ!", show_alert=True)
-        # await query.answer("Closing.") # Already acknowledged
-        await query.message.delete(); try: await query.message.reply_to_message.delete() except: pass
+        # await query.answer("ᴄʟᴏꜱɪɴɢ.") # Already acknowledged generally
+        await query.message.delete()
+        # --- Corrected Block ---
+        try:
+            await query.message.reply_to_message.delete()
+        except:
+            pass
+        # --- End Correction ---
+        return # Exit after handling
+
     elif data.startswith("file"):
         ident, file_id = data.split("#")
         try: user = query.message.reply_to_message.from_user.id
-        except: user = query.from_user.id
+        except: user = query.message.from_user.id
         if int(user) != 0 and query.from_user.id != int(user): return await query.answer(f"ʜᴇʟʟᴏ {query.from_user.first_name},\nɴᴏᴛ ғᴏʀ ʏᴏᴜ!", show_alert=True)
         # URL answer handles acknowledgement
         await query.answer(url=f"https://t.me/{temp.U_NAME}?start=file_{query.message.chat.id}_{file_id}")
+        return
+
     elif data.startswith("get_del_file"):
         ident, group_id, file_id = data.split("#")
-        await query.answer(url=f"https://t.me/{temp.U_NAME}?start=file_{group_id}_{file_id}"); try: await query.message.delete() except: pass
+        await query.answer(url=f"https://t.me/{temp.U_NAME}?start=file_{group_id}_{file_id}")
+        try: await query.message.delete()
+        except: pass
+        return
+
     elif data.startswith("get_del_send_all_files"):
         ident, group_id, key = data.split("#")
-        await query.answer(url=f"https://t.me/{temp.U_NAME}?start=all_{group_id}_{key}"); try: await query.message.delete() except: pass
+        await query.answer(url=f"https://t.me/{temp.U_NAME}?start=all_{group_id}_{key}")
+        try: await query.message.delete()
+        except: pass
+        return
+
     elif data.startswith("stream"):
         file_id = data.split('#', 1)[1]
         try:
@@ -566,8 +587,10 @@ async def cb_handler(client: Client, query: CallbackQuery):
             watch = f"{URL}watch/{msg.id}"; download = f"{URL}download/{msg.id}"
             btn=[[ InlineKeyboardButton("🖥️ ᴡᴀᴛᴄʜ", url=watch), InlineKeyboardButton("📥 ᴅᴏᴡɴʟᴏᴀᴅ", url=download)], [ InlineKeyboardButton('❌ ᴄʟᴏꜱᴇ', callback_data='close_data')]]
             await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
-            # await query.answer("Links generated!") # Already acknowledged
+            # await query.answer("ʟɪɴᴋꜱ ɢᴇɴᴇʀᴀᴛᴇᴅ!") # Already acknowledged
         except Exception as e: logger.error(f"Stream CB error: {e}"); await query.answer("ᴇʀʀᴏʀ ɢᴇɴᴇʀᴀᴛɪɴɢ ꜱᴛʀᴇᴀᴍ ʟɪɴᴋꜱ.", show_alert=True)
+        return
+
     elif data.startswith("checksub"):
         ident, mc = data.split("#")
         btn = await is_subscribed(client, query)
@@ -578,11 +601,20 @@ async def cb_handler(client: Client, query: CallbackQuery):
             except MessageNotModified: pass
         else:
             # await query.answer("✅ sᴜʙsᴄʀɪʙᴇᴅ!", show_alert=False) # Already acknowledged
-            await query.answer(url=f"https://t.me/{temp.U_NAME}?start={mc}") # Need URL answer
+            # Need URL answer here to proceed
+            await query.answer(url=f"https://t.me/{temp.U_NAME}?start={mc}")
             try: await query.message.delete()
             except: pass
-    elif data == "buttons": await query.answer() # Specific ack for page number button
-    elif data == "instructions": await query.answer("♢ ᴍᴏᴠɪᴇ: `Name Year`\n♢ ꜱᴇʀɪᴇꜱ: `Name S01E01`", show_alert=True)
+        return
+
+    elif data == "buttons":
+        await query.answer() # Specific ack for page number button
+        return
+
+    elif data == "instructions":
+        await query.answer("♢ ᴍᴏᴠɪᴇ: `Name Year`\n♢ ꜱᴇʀɪᴇꜱ: `Name S01E01`", show_alert=True)
+        return
+
     elif data == "start":
         buttons = [[ InlineKeyboardButton("➕ ᴀᴅᴅ ᴍᴇ", url=f'http://t.me/{temp.U_NAME}?startgroup=start') ], [ InlineKeyboardButton('✨ ᴜᴘᴅᴀᴛᴇꜱ', url=UPDATES_LINK), InlineKeyboardButton('💬 ꜱᴜᴘᴘᴏʀᴛ', url=SUPPORT_LINK) ], [ InlineKeyboardButton('❔ ʜᴇʟᴘ', callback_data='help'), InlineKeyboardButton('🔍 ɪɴʟɪɴᴇ', switch_inline_query_current_chat=''), InlineKeyboardButton('ℹ️ ᴀʙᴏᴜᴛ', callback_data='about') ]]
         try:
@@ -590,6 +622,8 @@ async def cb_handler(client: Client, query: CallbackQuery):
             await query.edit_message_media(InputMediaPhoto(random.choice(PICS), caption=start_caption), reply_markup=InlineKeyboardMarkup(buttons))
         except MessageNotModified: pass
         except Exception as e: logger.error(f"Start CB Error: {e}")
+        return
+
     elif data == "about":
         buttons = [[ InlineKeyboardButton('📊 ꜱᴛᴀᴛᴜꜱ', callback_data='stats'), InlineKeyboardButton('👨‍💻 ꜱᴏᴜʀᴄᴇ', callback_data='source') ], [ InlineKeyboardButton('🧑‍💻 ᴏᴡɴᴇʀ', callback_data='owner') ], [ InlineKeyboardButton('« ʙᴀᴄᴋ', callback_data='start') ]]
         try:
@@ -597,6 +631,8 @@ async def cb_handler(client: Client, query: CallbackQuery):
             await query.edit_message_media(InputMediaPhoto(random.choice(PICS), caption=about_caption), reply_markup=InlineKeyboardMarkup(buttons))
         except MessageNotModified: pass
         except Exception as e: logger.error(f"About CB Error: {e}")
+        return
+
     elif data == "stats":
         if query.from_user.id not in ADMINS: return await query.answer("ᴀᴅᴍɪɴꜱ ᴏɴʟʏ!", show_alert=True)
         sts_msg = None
@@ -629,6 +665,8 @@ async def cb_handler(client: Client, query: CallbackQuery):
         try: await sts_msg.edit_media( media=InputMediaPhoto(random.choice(PICS), caption=stats_text), reply_markup=InlineKeyboardMarkup(buttons) )
         except MessageNotModified: pass
         except Exception as e: logger.error(f"Final stats edit error: {e}"); await sts_msg.edit(stats_text, reply_markup=InlineKeyboardMarkup(buttons))
+        return
+
     elif data == "owner":
         buttons = [[InlineKeyboardButton('« ʙᴀᴄᴋ', callback_data='about')]]
         try:
@@ -636,6 +674,8 @@ async def cb_handler(client: Client, query: CallbackQuery):
             await query.edit_message_media(InputMediaPhoto(random.choice(PICS), caption=owner_caption), reply_markup=InlineKeyboardMarkup(buttons))
         except MessageNotModified: pass
         except Exception as e: logger.error(f"Owner CB Error: {e}")
+        return
+
     elif data == "help":
         buttons = [[ InlineKeyboardButton('📚 ᴜꜱᴇʀ', callback_data='user_command'), InlineKeyboardButton('⚙️ ᴀᴅᴍɪɴ', callback_data='admin_command') ], [ InlineKeyboardButton('« ʙᴀᴄᴋ', callback_data='start') ]]
         try:
@@ -643,6 +683,8 @@ async def cb_handler(client: Client, query: CallbackQuery):
             await query.edit_message_media(InputMediaPhoto(random.choice(PICS), caption=help_caption), reply_markup=InlineKeyboardMarkup(buttons))
         except MessageNotModified: pass
         except Exception as e: logger.error(f"Help CB Error: {e}")
+        return
+
     elif data == "user_command":
         buttons = [[ InlineKeyboardButton('« ʙᴀᴄᴋ', callback_data='help') ]]
         try:
@@ -650,6 +692,8 @@ async def cb_handler(client: Client, query: CallbackQuery):
             await query.edit_message_media(InputMediaPhoto(random.choice(PICS), caption=user_cmd_caption), reply_markup=InlineKeyboardMarkup(buttons))
         except MessageNotModified: pass
         except Exception as e: logger.error(f"User CMD CB Error: {e}")
+        return
+
     elif data == "admin_command":
         if query.from_user.id not in ADMINS: return await query.answer("ᴀᴅᴍɪɴꜱ ᴏɴʟʏ!", show_alert=True)
         buttons = [[ InlineKeyboardButton('« ʙᴀᴄᴋ', callback_data='help') ]]
@@ -658,6 +702,8 @@ async def cb_handler(client: Client, query: CallbackQuery):
             await query.edit_message_media(InputMediaPhoto(random.choice(PICS), caption=admin_cmd_caption), reply_markup=InlineKeyboardMarkup(buttons))
         except MessageNotModified: pass
         except Exception as e: logger.error(f"Admin CMD CB Error: {e}")
+        return
+
     elif data == "source":
         buttons = [[ InlineKeyboardButton('« ʙᴀᴄᴋ', callback_data='about') ]]
         try:
@@ -665,6 +711,8 @@ async def cb_handler(client: Client, query: CallbackQuery):
             await query.edit_message_media(InputMediaPhoto(random.choice(PICS), caption=source_caption), reply_markup=InlineKeyboardMarkup(buttons))
         except MessageNotModified: pass
         except Exception as e: logger.error(f"Source CB Error: {e}")
+        return
+
     elif data.startswith("bool_setgs"):
         ident, set_type, status, grp_id_str = data.split("#")
         try: grp_id = int(grp_id_str)
@@ -672,10 +720,12 @@ async def cb_handler(client: Client, query: CallbackQuery):
         userid = query.from_user.id
         if not await is_check_admin(client, grp_id, userid): return await query.answer("ɴᴏᴛ ᴀᴅᴍɪɴ.", show_alert=True)
         new_status = not (status == "True"); await save_group_settings(grp_id, set_type, new_status)
-        btn = await get_grp_stg(grp_id); # Fetches updated buttons
+        btn = await get_grp_stg(grp_id);
         try: await query.message.edit_reply_markup(InlineKeyboardMarkup(btn))
         except MessageNotModified: pass
         await query.answer(f"{set_type.replace('_',' ').upper()} ꜱᴇᴛ ᴛᴏ {new_status}"); # Provide feedback
+        return
+
     elif data.startswith(("imdb_setgs", "welcome_setgs", "tutorial_setgs", "shortlink_setgs", "caption_setgs")):
         setting_type = data.split("_")[0]; _, grp_id_str = data.split("#")
         try: grp_id = int(grp_id_str)
@@ -690,6 +740,8 @@ async def cb_handler(client: Client, query: CallbackQuery):
                [ InlineKeyboardButton(f'ᴅᴇғᴀᴜʟᴛ {setting_type.replace("_"," ").upper()}', callback_data=f'default_{setting_type}#{grp_id}') ],
                [ InlineKeyboardButton('« ʙᴀᴄᴋ', callback_data=f'back_setgs#{grp_id}') ]]
         await query.message.edit(f'⚙️ {setting_type.replace("_"," ").upper()} ꜱᴇᴛᴛɪɴɢꜱ:\n\nᴄᴜʀʀᴇɴᴛ:\n`{current_val}`', reply_markup=InlineKeyboardMarkup(btn), disable_web_page_preview=True)
+        return
+
     elif data.startswith(("set_imdb", "set_welcome", "set_tutorial", "set_shortlink", "set_caption")):
         # Acknowledge might be delayed here due to listen
         setting_type = data.split("_")[1].split("#")[0]; _, grp_id_str = data.split("#")
@@ -723,6 +775,8 @@ async def cb_handler(client: Client, query: CallbackQuery):
             else: await query.message.reply(success, reply_markup=InlineKeyboardMarkup(back_btn))
         except asyncio.TimeoutError: await ask_msg.edit("⏰ ᴛɪᴍᴇᴏᴜᴛ.") if ask_msg else None
         except Exception as e: logger.error(f"Listen error set_{setting_type}: {e}"); await ask_msg.edit("ᴇʀʀᴏʀ ᴘʀᴏᴄᴇꜱꜱɪɴɢ ɪɴᴘᴜᴛ.") if ask_msg else None
+        return
+
     elif data.startswith(("default_imdb", "default_welcome", "default_tutorial", "default_shortlink", "default_caption")):
         setting_type = data.split("_")[1].split("#")[0]; _, grp_id_str = data.split("#")
         try: grp_id = int(grp_id_str)
@@ -736,6 +790,8 @@ async def cb_handler(client: Client, query: CallbackQuery):
         else: k, dv = setting_info; await save_group_settings(grp_id, k, dv)
         back_btn = [[ InlineKeyboardButton('« ʙᴀᴄᴋ', callback_data=f'{setting_type}_setgs#{grp_id}') ]]
         await query.message.edit(f"✅ ʀᴇꜱᴇᴛ {setting_type.replace('_',' ').upper()} ᴛᴏ ᴅᴇғᴀᴜʟᴛ.", reply_markup=InlineKeyboardMarkup(back_btn))
+        return
+
     elif data.startswith("back_setgs"):
         _, grp_id_str = data.split("#")
         try: grp_id = int(grp_id_str)
@@ -745,11 +801,15 @@ async def cb_handler(client: Client, query: CallbackQuery):
         btn = await get_grp_stg(grp_id); # Fetches buttons
         chat = await client.get_chat(grp_id)
         await query.message.edit(f"⚙️ ꜱᴇᴛᴛɪɴɢꜱ ғᴏʀ <b>'{chat.title}'</b>:", reply_markup=InlineKeyboardMarkup(btn))
+        return
+
     elif data == "open_group_settings":
         userid = query.from_user.id; grp_id = query.message.chat.id
         if not await is_check_admin(client, grp_id, userid): return await query.answer("ɴᴏᴛ ᴀᴅᴍɪɴ.", show_alert=True)
         btn = await get_grp_stg(grp_id);
         await query.message.edit(f"⚙️ ꜱᴇᴛᴛɪɴɢꜱ ғᴏʀ <b>'{query.message.chat.title}'</b>:", reply_markup=InlineKeyboardMarkup(btn))
+        return
+
     elif data == "open_pm_settings":
         userid = query.from_user.id; grp_id = query.message.chat.id
         if not await is_check_admin(client, grp_id, userid): return await query.answer("ɴᴏᴛ ᴀᴅᴍɪɴ.", show_alert=True)
@@ -757,12 +817,16 @@ async def cb_handler(client: Client, query: CallbackQuery):
         pm_btn = [[ InlineKeyboardButton('ɢᴏ ᴛᴏ ᴘᴍ ➔', url=f"https://t.me/{temp.U_NAME}?start=settings_{grp_id}") ]]
         try: await client.send_message(userid, f"⚙️ ꜱᴇᴛᴛɪɴɢꜱ ғᴏʀ <b>'{query.message.chat.title}'</b>:", reply_markup=InlineKeyboardMarkup(btn)); await query.message.edit("✅ ꜱᴇɴᴛ ᴛᴏ ᴘᴍ.", reply_markup=InlineKeyboardMarkup(pm_btn))
         except Exception as e: logger.warning(f"PM settings error {userid}: {e}"); await query.answer(url=f"https://t.me/{temp.U_NAME}?start=settings_{grp_id}"); await query.message.edit("⚠️ ᴄʟɪᴄᴋ ʙᴜᴛᴛᴏɴ ᴛᴏ ᴏᴘᴇɴ ɪɴ ᴘᴍ.", reply_markup=InlineKeyboardMarkup(pm_btn))
+        return
+
     elif data.startswith("delete"):
         if query.from_user.id not in ADMINS: return await query.answer("ᴀᴅᴍɪɴꜱ ᴏɴʟʏ.", show_alert=True)
         # Needs confirmation
         _, query_text = data.split("_", 1); await query.message.edit('⏳ ᴅᴇʟᴇᴛɪɴɢ...')
         deleted_count = await delete_files(query_text);
         await query.message.edit(f'✅ ᴅᴇʟᴇᴛᴇᴅ {deleted_count} ғɪʟᴇꜱ ғᴏʀ `{query_text}`.')
+        return
+
     elif data.startswith("send_all"):
         ident, key, req = data.split("#");
         try: req_user_id = int(req)
@@ -772,6 +836,8 @@ async def cb_handler(client: Client, query: CallbackQuery):
         if not files: return await query.answer("ʀᴇǫᴜᴇꜱᴛ ᴇxᴘɪʀᴇᴅ.", show_alert=True)
         # URL answer handles ack
         await query.answer(url=f"https://t.me/{temp.U_NAME}?start=all_{query.message.chat.id}_{key}")
+        return
+
     elif data in ["unmute_all_members", "unban_all_members", "kick_muted_members", "kick_deleted_accounts_members"]:
         if not await is_check_admin(client, query.message.chat.id, query.from_user.id): return await query.answer("ɴᴏᴛ ᴀᴅᴍɪɴ.", show_alert=True)
         # Longer operation, ack early
@@ -805,6 +871,10 @@ async def cb_handler(client: Client, query: CallbackQuery):
         if success == 0 and errors == 0: final = f"🤷‍♂️ ɴᴏ {target.upper()} ᴜꜱᴇʀꜱ ғᴏᴜɴᴅ ᴛᴏ {action.upper()}."
         try: await query.message.edit(final)
         except: await query.message.reply(final); await query.message.delete() # Fallback
+        return
+
+    # else: logger.warning(f"Unhandled CB data: {data}") # Log unhandled cases if needed
+
 
 async def auto_filter(client, msg, s, spoll=False):
     if not spoll:
@@ -846,7 +916,7 @@ async def auto_filter(client, msg, s, spoll=False):
         pg_row = [ InlineKeyboardButton(pg_lbl, callback_data="buttons"), InlineKeyboardButton("ɴᴇxᴛ »", callback_data=f"next_{req}_{key}_{offset}") ]; btn.append(pg_row)
 
     imdb = await get_poster(search, file=(files[0])['file_name']) if settings.get("imdb", True) else None
-    TEMPLATE = settings.get('template', script.IMDB_TEMPLATE) # Use group or default template
+    TEMPLATE = settings.get('template', script.IMDB_TEMPLATE) # Use group or default template (font from Script.py)
 
     if imdb:
         try:
