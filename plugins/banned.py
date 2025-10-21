@@ -25,7 +25,7 @@ async def is_user_banned(bot, message):
     reply_markup=InlineKeyboardMarkup(buttons)
     ban = await db.get_ban_status(message.from_user.id)
     # Font applied to the reply message
-    await message.reply(f'ꜱᴏʀʀʏ {message.from_user.mention},\nᴍʏ ᴏᴡɴᴇʀ ʏᴏᴜ ᴀʀᴇ ʙᴀɴɴᴇᴅ ᴛᴏ ᴜꜱᴇ ᴍᴇ! ɪꜰ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴋɴᴏᴡ ᴍᴏʀᴇ ᴀʙᴏᴜᴛ ɪᴛ ᴄᴏɴᴛᴀᴄᴛ ꜱᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ.\nʀᴇᴀꜱᴏɴ - <code>{ban["ban_reason"]}</code>',
+    await message.reply(f'ꜱᴏʀʀʏ {message.from_user.mention},\nʏᴏᴜ ᴀʀᴇ ʙᴀɴɴᴇᴅ! ɪꜰ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴋɴᴏᴡ ᴍᴏʀᴇ ᴀʙᴏᴜᴛ ɪᴛ ᴄᴏɴᴛᴀᴄᴛ @ActualHomie\nʀᴇᴀꜱᴏɴ - <code>{ban["ban_reason"]}</code>',
                         reply_markup=reply_markup)
 
 @Client.on_message(filters.group & disabled_group & filters.incoming)
@@ -37,7 +37,7 @@ async def is_group_disabled(bot, message):
     vazha = await db.get_chat(message.chat.id)
     # Font applied to the reply message
     k = await message.reply(
-        text=f"<b><u>ᴄʜᴀᴛ ɴᴏᴛ ᴀʟʟᴏᴡᴇᴅ</u></b>\n\nᴍʏ ᴏᴡɴᴇʀ ʜᴀꜱ ʀᴇꜱᴛʀɪᴄᴛᴇᴅ ᴍᴇ ғʀᴏᴍ ᴡᴏʀᴋɪɴɢ ʜᴇʀᴇ! ɪꜰ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴋɴᴏᴡ ᴍᴏʀᴇ ᴀʙᴏᴜᴛ ɪᴛ ᴄᴏɴᴛᴀᴄᴛ ꜱᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ.\nʀᴇᴀꜱᴏɴ - <code>{vazha['reason']}</code>",
+        text=f"<b><u>ᴄʜᴀᴛ ɴᴏᴛ ᴀʟʟᴏᴡᴇᴅ</u></b>\n\nʀᴇꜱᴛʀɪᴄᴛᴇᴅ! ɪꜰ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴋɴᴏᴡ ᴍᴏʀᴇ ᴀʙᴏᴜᴛ ɪᴛ ᴄᴏɴᴛᴀᴄᴛ @ActualHomie\nʀᴇᴀꜱᴏɴ - <code>{vazha['reason']}</code>",
         reply_markup=reply_markup)
     try:
         await k.pin()
