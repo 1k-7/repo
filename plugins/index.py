@@ -3,7 +3,7 @@ import time
 import asyncio
 from math import ceil
 from hydrogram import Client, filters, enums
-from hydrogram.errors import FloodWait, MessageNotModified, MessageTooLong
+from hydrogram.errors import FloodWait, MessageNotModified, MessageTooLong # Added MessageTooLong
 from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from info import ADMINS, INDEX_EXTENSIONS
 from database.ia_filterdb import save_file # Assuming save_file is now async
@@ -175,7 +175,7 @@ def get_progress_bar(percent, length=10):
     unfilled = length - filled
     return '█' * filled + '▒' * unfilled
 
-# New function using iter_messages and concurrent saving
+# Function using iter_messages and concurrent saving
 async def index_files_to_db_iter(lst_msg_id, chat, msg, bot, skip):
     global index_stats
     SAVE_BATCH_SIZE = 100 # How many save tasks to gather at once
@@ -315,27 +315,31 @@ async def index_files_to_db_iter(lst_msg_id, chat, msg, bot, skip):
 async def index_status_alert(bot, query: CallbackQuery):
     global index_stats
 
-    # Construct the status text directly from the latest stats
-    elapsed = time.time() - index_stats.get("start_time", time.time())
-    progress = index_stats.get("current", 0) - index_stats.get("skip", 0)
-    total_to_process = index_stats.get("total_to_process", 1) # Avoid division by zero
-    percentage = min((progress / total_to_process) * 100, 100.0) if total_to_process > 0 else 0.0
-    progress_bar_str = get_progress_bar(int(percentage))
+    # Construct the status text directly from the latest stats if indexing is active
+    if lock.locked():
+        elapsed = time.time() - index_stats.get("start_time", time.time())
+        progress = index_stats.get("current", 0) - index_stats.get("skip", 0)
+        total_to_process = index_stats.get("total_to_process", 1) # Avoid division by zero
+        percentage = min((progress / total_to_process) * 100, 100.0) if total_to_process > 0 else 0.0
+        progress_bar_str = get_progress_bar(int(percentage))
 
-    # Simplified ETA for iter_messages
-    processed_per_sec = progress / elapsed if elapsed > 1 else 0 # Avoid division by zero early on
-    remaining = total_to_process - progress
-    eta = (remaining / processed_per_sec) if processed_per_sec > 0 else 0
+        processed_per_sec = progress / elapsed if elapsed > 1 else 0 # Avoid division by zero early on
+        remaining = total_to_process - progress
+        eta = (remaining / processed_per_sec) if processed_per_sec > 0 and remaining > 0 else 0
 
-    status_text = (
-         f"📊 Indexing Status (`{index_stats.get('chat_id', 'N/A')}`)\n"
-         f"▷ {progress_bar_str} {percentage:.1f}%\n"
-         f"▷ Msg ID: {index_stats.get('current', 0)}/{index_stats.get('last_msg_id', 0)}\n"
-         f"▷ Saved: {index_stats.get('total_files', 0)} | Dup: {index_stats.get('duplicate', 0)}\n"
-         f"▷ Skip: {index_stats.get('no_media', 0) + index_stats.get('unsupported', 0)} | Err: {index_stats.get('errors', 0)}\n"
-         f"▷ Elap: {get_readable_time(elapsed)}\n"
-         f"▷ ETA: {get_readable_time(eta)}"
-     )
+        status_text = (
+             f"📊 Indexing Status (`{index_stats.get('chat_id', 'N/A')}`)\n"
+             f"▷ {progress_bar_str} {percentage:.1f}%\n"
+             f"▷ Msg ID: {index_stats.get('current', 0)}/{index_stats.get('last_msg_id', 0)}\n"
+             f"▷ Saved: {index_stats.get('total_files', 0)} | Dup: {index_stats.get('duplicate', 0)}\n"
+             f"▷ Skip: {index_stats.get('no_media', 0) + index_stats.get('unsupported', 0)} | Err: {index_stats.get('errors', 0)}\n"
+             f"▷ Elap: {get_readable_time(elapsed)}\n"
+             f"▷ ETA: {get_readable_time(eta)}"
+         )
+    else:
+        # Use the last saved status message if indexing is not running
+        status_text = index_stats.get("status_message", "No active indexing process.")
+
 
     try:
         # Display directly without "last updated"
