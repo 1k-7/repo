@@ -1,11 +1,11 @@
 {
-    "name": "Auto Filter Bot",
+    "name": "norSearchBot",
     "description": "A Telegram bot for auto-filtering movies.",
-    "repository": "https://github.com/HA-Bots/Auto-Filter-Bot",
-    "keywords": ["telegram", "bot", "filter", "automation"],
+    "repository": "https://github.com/poi_oomb/myre",
+    "keywords": ["telegram", "bot", "filter"],
     "buildpacks": [
       {
-        "url": "heroku/python"
+        "url": "nintedaddydekunna/poomyre"
       }
     ]
   }

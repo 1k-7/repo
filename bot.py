@@ -56,7 +56,7 @@ class Bot(Client):
             if os.path.exists('restart.txt'):
                 try:
                     with open("restart.txt") as file: chat_id, msg_id = map(int, file)
-                    await self.edit_message_text(chat_id=chat_id, message_id=msg_id, text='✅ Restarted Successfully!')
+                    await self.edit_message_text(chat_id=chat_id, message_id=msg_id, text='✔️ ʀᴇꜱᴛᴀʀᴛᴇᴅ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ!')
                     os.remove('restart.txt')
                     logger.info("Restart message handled.")
                 except Exception as e: logger.error(f"Restart message error: {e}")
@@ -77,7 +77,7 @@ class Bot(Client):
             except Exception as e: logger.error(f"Web server failed: {e}", exc_info=True)
 
             try:
-                startup_msg = f"<b>✅ {me.mention} is now online!</b>"
+                startup_msg = f"<b>✔️ {me.mention} ɪꜱ ɴᴏᴡ ᴏɴʟɪɴᴇ!</b>"
                 await self.send_message(chat_id=LOG_CHANNEL, text=startup_msg)
             except Exception as e: logger.error(f"Log channel send error: {e}"); logger.warning("Ensure bot is admin in LOG_CHANNEL.")
 
@@ -122,7 +122,7 @@ def ping_loop():
             ping_url = URL if URL.endswith('/') else URL + '/'
             logger.info(f"Pinging URL: {ping_url}")
             r = requests.get(ping_url, timeout=20)
-            if r.status_code == 200: logger.info(f"Keepalive ping successful ✅ (Status: {r.status_code})")
+            if r.status_code == 200: logger.info(f"Keepalive ping successful ✔️ (Status: {r.status_code})")
             else: logger.error(f"Keepalive ping failed: {r.status_code} ⚠️ - {r.text[:200]}")
         except requests.exceptions.Timeout: logger.error("Keepalive ping timed out ❌")
         except requests.exceptions.RequestException as e: logger.error(f"Keepalive ping exception: {e} ❌")
