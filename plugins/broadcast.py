@@ -30,7 +30,7 @@ async def users_broadcast(bot, message):
     b_msg = message.reply_to_message
     b_sts = await message.reply_text(text='ʙʀᴏᴀᴅᴄᴀꜱᴛɪɴɢ ʏᴏᴜʀ ᴜꜱᴇʀꜱ ᴍᴇꜱꜱᴀɢᴇꜱ...') # Font applied
     start_time = time.time()
-    total_users = await db.total_users_count()
+    total_users = db.total_users_count()
     done = 0
     failed = 0
     success = 0
@@ -66,7 +66,7 @@ async def groups_broadcast(bot, message):
         pin = False
     chats = await db.get_all_chats()
     b_msg = message.reply_to_message
-    b_sts = await message.reply_text(text='ʙʀᴏᴀᴅᴄᴀꜱᴛɪɴɢ ʏᴏᴜʀ ɢʀᴏᴜᴘꜱ ᴍᴇꜱꜱᴀɢᴇꜱ...') # Font applied
+    b_sts = message.reply_text(text='ʙʀᴏᴀᴅᴄᴀꜱᴛɪɴɢ ʏᴏᴜʀ ɢʀᴏᴜᴘꜱ ᴍᴇꜱꜱᴀɢᴇꜱ...') # Font applied
     start_time = time.time()
     total_chats = await db.total_chat_count()
     done = 0
