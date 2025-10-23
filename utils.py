@@ -319,10 +319,26 @@ async def save_group_settings(group_id, key, value):
 
 
 async def broadcast_messages(user_id, message, pin):
-    try: m = await message.copy(chat_id=user_id); await m.pin(disable_notification=True) if pin else None; return "Success"
-    except FloodWait as e: logger.warning(f"FloodWait sending to user {user_id}: sleep {e.value}s"); await asyncio.sleep(e.value); return await broadcast_messages(user_id, message, pin) # Retry
-    except UserNotParticipant: logger.warning(f"User {user_id} blocked the bot. Deleting."); await db.delete_user(int(user_id)); return "Error" # Handle blocked bot
-    except Exception as e: logger.error(f"Broadcast error to user {user_id}: {e}"); await db.delete_user(int(user_id)); return "Error" # Delete on other errors too
+    loop = asyncio.get_running_loop() # Get the current event loop
+    try:
+        m = await message.copy(chat_id=user_id)
+        if pin:
+            await m.pin(disable_notification=True)
+        return "Success"
+    except FloodWait as e:
+        logger.warning(f"FloodWait sending to user {user_id}: sleep {e.value}s")
+        await asyncio.sleep(e.value)
+        return await broadcast_messages(user_id, message, pin) # Retry
+    except UserNotParticipant:
+        logger.warning(f"User {user_id} blocked the bot. Deleting.")
+        # Run synchronous db.delete_user in an executor thread
+        await loop.run_in_executor(None, db.delete_user, int(user_id))
+        return "Error" # Handle blocked bot
+    except Exception as e:
+        logger.error(f"Broadcast error to user {user_id}: {e}")
+        # Run synchronous db.delete_user in an executor thread
+        await loop.run_in_executor(None, db.delete_user, int(user_id))
+        return "Error" # Delete on other errors too
 
 async def groups_broadcast_messages(chat_id, message, pin):
     try: k = await message.copy(chat_id=chat_id); await k.pin(disable_notification=True) if pin else None; return "Success"
