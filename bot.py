@@ -84,10 +84,11 @@ class Bot(Client):
             logger.info(f"@{me.username} started successfully. ✓")
 
         except FloodWait as e:
-             logger.critical(f"TELEGRAM FLOODWAIT: A wait of {e.value} seconds is required. Stopping bot.")
-             # This will cause the process to exit, and the platform should respect the restart policy
-             # Do not try to handle this with a sleep, as it can cause deployment timeouts
-             return
+             logger.warning(f"TELEGRAM FLOODWAIT: Sleeping for {e.value} seconds.")
+             await asyncio.sleep(e.value + 5) # Wait for the floodwait time + 5s
+             # We will NOT stop the bot, we will let it continue starting
+             await self.start() # Retry starting
+             return # Return after the retry is done
         except Exception as start_err:
              logger.critical(f"Critical error during bot start method: {start_err}", exc_info=True)
              raise start_err

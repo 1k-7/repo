@@ -699,13 +699,15 @@ async def cb_handler(client: Client, query: CallbackQuery):
             return
             # END OF INDENTED BLOCK
 
-    elif data == "owner": # <--- This is line 701
-            buttons = [[InlineKeyboardButton('« ʙᴀᴄᴋ', callback_data='about')]]
-            try:
-                owner_caption = script.MY_OWNER_TXT # Font from Script.py
+    elif data == "owner":
+        buttons = [[InlineKeyboardButton('« ʙᴀᴄᴋ', callback_data='about')]]
+        try:
+            owner_caption = script.MY_OWNER_TXT # Font from Script.py
             await query.edit_message_media(InputMediaPhoto(random.choice(PICS), caption=owner_caption), reply_markup=InlineKeyboardMarkup(buttons))
-        except MessageNotModified: pass
-        except Exception as e: logger.error(f"Owner CB Error: {e}")
+        except MessageNotModified: 
+            pass
+        except Exception as e: 
+            logger.error(f"Owner CB Error: {e}")
         return
 
     elif data == "help":
