@@ -25,6 +25,7 @@ class script(object):
 <blockquote>╭─[ ᴅᴀᴛᴀʙᴀꜱᴇ ꜱᴛᴀᴛꜱ ]────➣
 │ 🗳️ ʙᴏᴛ ᴅᴀᴛᴀ ꜱɪᴢᴇ: <code>{}</code>
 │ 💾 ᴛᴏᴛᴀʟ ꜰɪʟᴇꜱ (ᴀʟʟ ᴅʙꜱ): <code>{}</code>
+│{}
 ╰─────────────────────────➣</blockquote>
 <blockquote> ⏳ ʙᴏᴛ ᴜᴘᴛɪᴍᴇ: <code>{}</code> </blockquote>
 """ # Removed premium user count, added {} for dynamic DB stats
@@ -33,7 +34,7 @@ class script(object):
 ♢ ᴛɪᴛʟᴇ: {}
 ♢ ɪᴅ: <code>{}</code>
 ♢ ᴜꜱᴇʀɴᴀᴍᴇ: {}
-♢ ᴍᴇᴍʙᴇʀꜱ: <code>{}</code>"""
+♢ ᴍᴇᴍʙᴇʀꜱ: code>{}</code>"""
 
     NEW_USER_TXT = """#ɴᴇᴡ_ᴜꜱᴇʀ
 ♢ ɴᴀᴍᴇ: {}
@@ -78,7 +79,6 @@ class script(object):
 /stats ⤬ ɢᴇᴛ ʙᴏᴛ ꜱᴛᴀᴛɪꜱᴛɪᴄꜱ
 /delete [ǫᴜᴇʀʏ] ⤬ ᴅᴇʟᴇᴛᴇ ꜰɪʟᴇꜱ
 /delete_all ⤬ ᴅᴇʟᴇᴛᴇ ᴀʟʟ ɪɴᴅᴇхᴇᴅ ꜰɪʟᴇꜱ (⚠️)
-/cleanmultdb ⤬ ʀᴇᴍᴏᴠᴇ ᴄʀᴏꜱꜱ-ᴅʙ ᴅᴜᴘʟɪᴄᴀᴛᴇꜱ
 /broadcast ⤬ ꜱᴇɴᴅ ᴍꜱɢ ᴛᴏ ᴜꜱᴇʀꜱ (ʀᴇᴘʟʏ)
 /grp_broadcast ⤬ ꜱᴇɴᴅ ᴍꜱɢ ᴛᴏ ɢʀᴏᴜᴘꜱ (ʀᴇᴘʟʏ)
 /pin_broadcast ⤬ ʙʀᴏᴀᴅᴄᴀꜱᴛ & ᴘɪɴ (ᴜꜱᴇʀꜱ)
@@ -95,7 +95,7 @@ class script(object):
 /off_auto_filter ⤬ ᴅɪꜱᴀʙʟᴇ ᴀᴜᴛᴏ-ꜰɪʟᴛᴇʀ
 /on_auto_filter ⤬ ᴇɴᴀʙʟᴇ ᴀᴜᴛᴏ-ꜰɪʟᴛᴇʀ
 /off_pm_search ⤬ ᴅɪꜱᴀʙʟᴇ ᴘᴍ ꜱᴇᴀʀᴄʜ
-/on_pm_search ⤬ ᴇɴᴀʙʟᴇ ᴘᴍ ꜱᴇᴀʀᴄʜ""" # Added /cleanmultdb
+/on_pm_search ⤬ ᴇɴᴀʙʟᴇ ᴘᴍ ꜱᴇᴀʀᴄʜ""" # Removed /cleanmultdb and /dbequal
 
     USER_COMMAND_TXT = """<b>✨ ᴜꜱᴇʀ ᴄᴏᴍᴍᴀɴᴅꜱ:</b>
 
