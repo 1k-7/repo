@@ -12,9 +12,16 @@ from info import (
     DATABASE_URIS, DATABASE_NAME, COLLECTION_NAME, # Use new DATABASE_URIS
     USE_CAPTION_FILTER, MAX_BTN
 )
-from utils import get_size
+# from utils import get_size # <--- REMOVED THIS LINE TO FIX CIRCULAR IMPORT
 
 logger = logging.getLogger(__name__)
+
+# Function duplicated from utils.py to break circular import
+def get_size(size_bytes):
+    if size_bytes is None or not isinstance(size_bytes, (int, float)) or size_bytes < 0: return "0 B"
+    size = float(size_bytes); units = ["B", "KB", "MB", "GB", "TB", "PB", "EB"]; i = 0
+    while size >= 1024.0 and i < len(units) - 1: i += 1; size /= 1024.0
+    return "%.2f %s" % (size, units[i])
 
 # --- New Multi-DB Setup ---
 file_db_clients = []
