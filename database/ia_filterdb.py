@@ -95,13 +95,14 @@ async def save_file(media):
         logger.error("Received media with no file_id")
         return 'err'
 
-    # Clean file name
+    # --- Improved Cleaning Logic ---
     raw_file_name = str(media.file_name) if media.file_name else "UnknownFile"
-    file_name = re.sub(r"[@\(\)\[\]]", "", raw_file_name)
-    file_name = re.sub(r"(_|\-|\.|\+)+", " ", file_name).strip()
-    file_name = re.sub(r'\s+', ' ', file_name)
+    file_name = raw_file_name.strip() # 1. Strip whitespace
+    file_name = re.sub(r"[@\(\)\[\]]", "", file_name) # 2. Remove special chars
+    file_name = re.sub(r"(_|\-|\.|\+)+", " ", file_name) # 3. Replace separators with space
+    file_name = re.sub(r'\s+', ' ', file_name).strip() # 4. Collapse spaces and final strip
+    # --- End Improved Cleaning ---
 
-    # Clean caption
     caption_text = str(media.caption) if media.caption is not None else ""
     file_caption = re.sub(r"@\w+|(_|\-|\.|\+)|https?://\S+", " ", caption_text).strip()
     file_caption = re.sub(r'\s+', ' ', file_caption)
@@ -113,18 +114,37 @@ async def save_file(media):
         'caption': file_caption
     }
 
-    # Check for duplicates across ALL databases first
+    # --- MODIFIED DUPLICATE CHECK ---
+    
+    # 1. Check for exact file_id (re-index check) across ALL databases
     try:
-        find_tasks = [
-            loop.run_in_executor(None, partial(collection.find_one, {'_id': file_id}, {'_id': 1}))
+        id_query_filter = {'_id': file_id}
+        id_find_tasks = [
+            loop.run_in_executor(None, partial(collection.find_one, id_query_filter, {'_id': 1}))
             for collection in file_db_collections
         ]
-        duplicates = await asyncio.gather(*find_tasks)
-        if any(duplicates):
-            logger.debug(f'[Duplicate] File already in one of the DBs: {file_name}')
+        id_duplicates = await asyncio.gather(*id_find_tasks)
+        if any(id_duplicates):
+            logger.debug(f'[Duplicate] File already in DB (by ID): {file_name}')
             return 'dup'
     except Exception as e:
-        logger.error(f"Duplicate check failed for file ID {file_id}: {e}. Proceeding with insert attempt...")
+        logger.error(f"Duplicate ID check failed for {file_id}: {e}. Proceeding...")
+
+    # 2. If no ID match, check for (file_name, file_size) (re-upload check)
+    try:
+        fn_query_filter = {'file_name': document['file_name'], 'file_size': document['file_size']}
+        fn_find_tasks = [
+            loop.run_in_executor(None, partial(collection.find_one, fn_query_filter, {'_id': 1}))
+            for collection in file_db_collections
+        ]
+        fn_duplicates = await asyncio.gather(*fn_find_tasks)
+        if any(fn_duplicates):
+            logger.debug(f'[Duplicate] File already in DB (by name+size): {file_name}')
+            return 'dup'
+    except Exception as e:
+        logger.error(f"Duplicate name+size check failed for {file_name}: {e}. Proceeding...")
+    # --- END MODIFICATION ---
+
 
     # Try to insert into the first available (non-full) database
     for i, collection in enumerate(file_db_collections):
@@ -147,6 +167,10 @@ async def save_file(media):
         except Exception as e:
             logger.error(f"Unexpected error saving file to {db_name_log}: {e}", exc_info=True)
             return 'err' # Return error for other exceptions
+    
+    # If loop finishes, all databases are full or failed
+    logger.critical(f"All {len(file_db_collections)} databases are full or failed. Cannot save file: {file_name}")
+    return 'err' # Return error for other exceptions
     
     # If loop finishes, all databases are full or failed
     logger.critical(f"All {len(file_db_collections)} databases are full or failed. Cannot save file: {file_name}")
