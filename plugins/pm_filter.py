@@ -26,7 +26,7 @@ from utils import (get_size, is_subscribed, is_check_admin, get_wish,
                    get_verify_status, update_verify_status)
 from database.users_chats_db import db
 # Updated imports for new multi-DB stats
-from database.ia_filterdb import get_total_files_count
+from database.ia_filterdb import get_total_files_count, get_search_results
 # from database.ia_filterdb import second_collection # Removed obsolete import
 from plugins.commands import get_grp_stg
 import logging

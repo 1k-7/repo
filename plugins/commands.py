@@ -332,16 +332,9 @@ async def stats_cmd(bot, message):
                 db_stats_str += f"│ 🗂️ {stat['name']}: <code>Error</code>\n"
             else:
                 # Show file count (objects) for this specific collection
-                db_file_count = "N/A"
-                try:
-                    for coll in file_db_collections:
-                        if coll.database.name == stat['db_name'] and coll.name == stat['coll_name']:
-                            db_file_count = await loop.run_in_executor(None, lambda: coll.count_documents({}))
-                            break
-                except: pass
+                # Use the 'coll_count' already retrieved from db.get_all_files_db_stats
+                db_file_count = stat.get('coll_count', 'N/A') 
                 db_stats_str += f"│ 🗂️ {stat['name']} ({db_file_count} ꜰɪʟᴇꜱ): <code>{get_size(stat['size'])}</code>\n"
-    else:
-        db_stats_str = "│ 🗂️ ꜰɪʟᴇ ᴅʙ ꜱᴛᴀᴛꜱ: <code>ᴇʀʀ</code>\n"
 
     # Get uptime
     uptime = get_readable_time(time_now() - temp.START_TIME)
@@ -471,97 +464,105 @@ async def clean_multi_db_duplicates(bot, message):
     if len(file_db_collections) < 2:
         return await message.reply("⚠️ ᴏɴʟʏ ᴏɴᴇ ᴅᴀᴛᴀʙᴀꜱᴇ ɪꜱ ᴄᴏɴꜰɪɢᴜʀᴇᴅ. ɴᴏ ᴅᴜᴘʟɪᴄᴀᴛᴇꜱ ᴛᴏ ᴄʟᴇᴀɴ.")
     
-    sts_msg = await message.reply("🧹 ꜱᴛᴀʀᴛɪɴɢ ᴄʀᴏꜱꜱ-ᴅᴀᴛᴀʙᴀꜱᴇ ᴅᴜᴘʟɪᴄᴀᴛᴇ ᴄʟᴇᴀɴᴜᴘ...\nᴛʜɪꜱ ᴍɪɢʜᴛ ᴛᴀᴋᴇ ᴀ ᴠᴇʀʏ ʟᴏɴɢ ᴛɪᴍᴇ.")
+    sts_msg = await message.reply("🧹 ꜱᴛᴀʀᴛɪɴɢ ᴍᴇᴍᴏʀʏ-ᴇꜰꜰɪᴄɪᴇɴᴛ ᴅᴜᴘʟɪᴄᴀᴛᴇ ᴄʟᴇᴀɴᴜᴘ...\nᴛʜɪꜱ ᴍɪɢʜᴛ ᴛᴀᴋᴇ ᴀ ᴠᴇʀʏ ʟᴏɴɢ ᴛɪᴍᴇ.")
     loop = asyncio.get_running_loop()
-    master_file_ids = set()
     total_removed = 0
     total_checked = 0
     total_errors = 0
     start = time_now()
+    last_update_time = time_now()
+    
+    BATCH_SIZE = 5000 # Process 5000 IDs at a time
 
     # This MUST be a 'def', not 'async def', to run in the executor
-    def process_cursor_batch_sync(cursor, batch_size):
+    def get_batch_ids_sync(cursor, batch_size):
         # This function runs in the executor
-        docs = []
+        ids = []
         try:
             for _ in range(batch_size):
-                # cursor.next() is a blocking call, which is why we're in an executor
-                docs.append(cursor.next())
+                # cursor.next() is a blocking call
+                ids.append(cursor.next()['_id']) # Only get the _id
         except StopIteration:
             pass # End of cursor
         except Exception as e:
             logger.error(f"Error fetching batch from cursor: {e}")
-        return docs
+        return ids
 
     try:
-        # Iterate through each DB, starting from the first
-        for i, collection in enumerate(file_db_collections):
-            db_name_log = f"DB #{i+1}"
-            logger.info(f"Processing {db_name_log} for duplicate cleanup...")
+        # Iterate through each DB, using it as a "master"
+        for i, master_collection in enumerate(file_db_collections):
+            master_db_name = f"DB #{i+1}"
+            logger.info(f"Using {master_db_name} as master, checking subsequent DBs...")
             
-            ids_to_remove = []
-            checked_in_this_db = 0
-            last_update_time = time_now()
-
-            # Get the cursor (sync)
-            cursor = await loop.run_in_executor(None, partial(collection.find, {}, {'_id': 1}))
-
-            BATCH_SIZE = 5000 # Process IDs in batches
+            # Get the cursor for the master collection (sync)
+            try:
+                master_cursor = await loop.run_in_executor(None, partial(master_collection.find, {}, {'_id': 1}))
+            except Exception as e:
+                logger.error(f"Failed to create cursor for {master_db_name}: {e}")
+                total_errors += 1
+                continue # Skip this master DB if cursor fails
 
             while True:
-                # Get next batch of documents (sync call)
-                batch_docs = await loop.run_in_executor(None, partial(process_cursor_batch_sync, cursor, BATCH_SIZE))
-                if not batch_docs:
-                    break # No more documents in this collection
+                # 1. Get a batch of IDs from the master DB
+                batch_ids = await loop.run_in_executor(None, partial(get_batch_ids_sync, master_cursor, BATCH_SIZE))
+                if not batch_ids:
+                    break # No more documents in this master collection
 
-                # Process the batch
-                batch_ids_to_remove = []
-                for doc in batch_docs:
-                    checked_in_this_db += 1
-                    file_id = doc.get('_id')
-                    if not file_id:
-                        continue
-                        
-                    if file_id in master_file_ids:
-                        batch_ids_to_remove.append(file_id)
-                    else:
-                        master_file_ids.add(file_id)
+                total_checked += len(batch_ids)
+                temp_id_set = set(batch_ids) # Small, in-memory set
                 
-                total_checked += len(batch_docs) # Correctly increment total checked
+                # 2. Iterate through all *subsequent* databases to clean them
+                for j, slave_collection in enumerate(file_db_collections):
+                    if i >= j:
+                        continue # Don't check against self or previous DBs
 
-                # Remove duplicates found *in this batch* from *this collection*
-                if batch_ids_to_remove:
+                    slave_db_name = f"DB #{j+1}"
                     try:
-                        del_res = await loop.run_in_executor(None, partial(collection.delete_many, {'_id': {'$in': batch_ids_to_remove}}))
+                        # 3. Delete from slave DB
+                        del_res = await loop.run_in_executor(None, partial(slave_collection.delete_many, {'_id': {'$in': list(temp_id_set)}}))
                         deleted_now = del_res.deleted_count if del_res else 0
-                        total_removed += deleted_now
-                        logger.info(f"Removed {deleted_now} duplicates from {db_name_log}. Total removed: {total_removed}")
+                        if deleted_now > 0:
+                            total_removed += deleted_now
+                            logger.info(f"Removed {deleted_now} duplicates from {slave_db_name} (found in {master_db_name}). Total removed: {total_removed}")
                     except Exception as del_e:
-                        logger.error(f"Error removing batch from {db_name_log}: {del_e}")
-                        total_errors += len(batch_ids_to_remove)
+                        logger.error(f"Error removing batch from {slave_db_name}: {del_e}")
+                        total_errors += len(temp_id_set) # Estimate error count
                 
                 # Update status message periodically
                 current_time = time_now()
                 if current_time - last_update_time > 15: # Update every 15 seconds
                      elapsed = get_readable_time(current_time - start)
-                     status_text = f"🧹 ᴄʟᴇᴀɴɪɴɢ ᴅᴜᴘʟɪᴄᴀᴛᴇꜱ... (ᴘʀᴏᴄᴇꜱꜱɪɴɢ {db_name_log})\n~ ᴄʜᴇᴄᴋᴇᴅ (ᴛᴏᴛᴀʟ): <code>{total_checked}</code>\n~ ʀᴇᴍᴏᴠᴇᴅ (ᴛᴏᴛᴀʟ): <code>{total_removed}</code>\n~ ᴇʀʀᴏʀꜱ: <code>{total_errors}</code>\n~ ᴇʟᴀᴘꜱᴇᴅ: <code>{elapsed}</code>"
+                     status_text = (
+                         f"🧹 ᴄʟᴇᴀɴɪɴɢ ᴅᴜᴘʟɪᴄᴀᴛᴇꜱ...\n"
+                         f"~ ᴍᴀꜱᴛᴇʀ ᴅʙ: <code>{master_db_name}</code>\n"
+                         f"~ ᴄʜᴇᴄᴋᴇᴅ (ᴛᴏᴛᴀʟ): <code>{total_checked}</code>\n"
+                         f"~ ʀᴇᴍᴏᴠᴇᴅ (ᴛᴏᴛᴀʟ): <code>{total_removed}</code>\n"
+                         f"~ ᴇʀʀᴏʀꜱ: <code>{total_errors}</code>\n"
+                         f"~ ᴇʟᴀᴘꜱᴇᴅ: <code>{elapsed}</code>"
+                     )
                      try: await sts_msg.edit_text(status_text)
                      except FloodWait as e: await asyncio.sleep(e.value)
                      except MessageNotModified: pass
                      except Exception as edit_e: logger.warning(f"Cleanup status edit error: {edit_e}")
                      last_update_time = current_time
             
-            # Clean up cursor for this collection
+            # Clean up cursor for this master collection
             try:
-                await loop.run_in_executor(None, cursor.close)
+                await loop.run_in_executor(None, master_cursor.close)
             except Exception as e_close:
-                 logger.warning(f"Error closing cursor for {db_name_log}: {e_close}")
+                 logger.warning(f"Error closing cursor for {master_db_name}: {e_close}")
             
-            logger.info(f"Finished processing {db_name_log}. Checked: {checked_in_this_db}")
+            logger.info(f"Finished using {master_db_name} as master.")
 
         # After iterating all DBs
         elapsed = get_readable_time(time_now() - start)
-        await sts_msg.edit_text(f"✔️ ᴄʀᴏꜱꜱ-ᴅʙ ᴄʟᴇᴀɴᴜᴘ ᴄᴏᴍᴘʟᴇᴛᴇ!\n\n⏱️ ᴛᴏᴏᴋ: <code>{elapsed}</code>\n\nꜱᴛᴀᴛꜱ:\n~ ᴛᴏᴛᴀʟ ᴄʜᴇᴄᴋᴇᴅ: <code>{total_checked}</code>\n~ ᴛᴏᴛᴀʟ ᴜɴɪQᴜᴇ ꜰɪʟᴇꜱ: <code>{len(master_file_ids)}</code>\n~ ᴛᴏᴛᴀʟ ᴅᴜᴘʟɪᴄᴀᴛᴇꜱ ʀᴇᴍᴏᴠᴇᴅ: <code>{total_removed}</code>\n~ ᴇʀʀᴏʀꜱ: <code>{total_errors}</code>")
+        await sts_msg.edit_text(
+            f"✔️ ᴄʀᴏꜱꜱ-ᴅʙ ᴄʟᴇᴀɴᴜᴘ ᴄᴏᴍᴘʟᴇᴛᴇ!\n\n"
+            f"⏱️ ᴛᴏᴏᴋ: <code>{elapsed}</code>\n\n"
+            f"~ ᴛᴏᴛᴀʟ ᴄʜᴇᴄᴋᴇᴅ (ᴀᴘᴘʀᴏx): <code>{total_checked}</code>\n"
+            f"~ ᴛᴏᴛᴀʟ ᴅᴜᴘʟɪᴄᴀᴛᴇꜱ ʀᴇᴍᴏᴠᴇᴅ: <code>{total_removed}</code>\n"
+            f"~ ᴇʀʀᴏʀꜱ (ᴇꜱᴛɪᴍᴀᴛᴇ): <code>{total_errors}</code>"
+        )
 
     except Exception as e:
         logger.error(f"/cleanmultdb error: {e}", exc_info=True)
