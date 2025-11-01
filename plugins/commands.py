@@ -472,7 +472,7 @@ async def ping_cmd(client, message):
 
 topdown_lock = asyncio.Lock() # Lock to prevent running /topdown twice
 
-# --- FIXED /topdown COMMAND ---
+# --- CLEANED /topdown COMMAND ---
 @Client.on_message(filters.command('topdown') & filters.user(ADMINS))
 async def topdown_cmd(bot, message):
     """Moves files from other DBs to the active DB in small batches."""
@@ -480,7 +480,7 @@ async def topdown_cmd(bot, message):
     if topdown_lock.locked():
         return await message.reply("⚠️ ᴀ ᴛᴏᴘᴅᴏᴡɴ ᴘʀᴏᴄᴇꜱꜱ ɪꜱ ᴀʟʀᴇᴀᴅʏ ʀᴜɴɴɪɴɢ.")
     
-    async with topdown_lock:
+    async with topdown_lock: # 'async with' handles lock release on error or completion
         sts_msg = await message.reply("⏳ ɪɴɪᴛɪᴀᴛɪɴɢ ᴍᴇᴍᴏʀʏ-ᴇꜰꜰɪᴄɪᴇɴᴛ ᴛᴏᴘ-ᴅᴏᴡɴ ʙᴀʟᴀɴᴄᴇ...\n\nꜰɪɴᴅɪɴɢ ᴀᴄᴛɪᴠᴇ ᴅᴀᴛᴀʙᴀꜱᴇ...")
         loop = asyncio.get_running_loop()
         start = time_now()
@@ -556,15 +556,26 @@ async def topdown_cmd(bot, message):
                         other_errors = len(bwe.details.get('writeErrors', [])) - dupe_errors
                         total_failed_other += other_errors
                         
+                        # Check if the *active* DB is full (AtlasError code 8000)
                         if any(e.get('code') == 8000 for e in bwe.details.get('writeErrors', [])):
                              logger.critical(f"Active DB {active_db_name} is FULL! Aborting topdown.")
                              await sts_msg.edit(f"❌ ᴀᴄᴛɪᴠᴇ ᴅʙ {active_db_name} ɪꜱ ꜰᴜʟʟ! ᴀʙᴏʀᴛɪɴɢ ᴛʀᴀɴꜱꜰᴇʀ.")
-                             # Clean up cursor and release lock
+                             # Clean up cursor
                              try: await loop.run_in_executor(None, source_cursor.close)
                              except: pass
-                             return # Stop the entire function
+                             # The 'async with' will release the lock, so just return
+                             return 
                         
                     except Exception as insert_e:
+                        # Check for the AtlasError code 8000 (space quota) outside of BulkWriteError
+                        if 'code: 8000' in str(insert_e) or 'space quota' in str(insert_e).lower():
+                            logger.critical(f"Active DB {active_db_name} is FULL! (Non-BulkWrite) Aborting topdown. Error: {insert_e}")
+                            await sts_msg.edit(f"❌ ᴀᴄᴛɪᴠᴇ ᴅʙ {active_db_name} ɪꜱ ꜰᴜʟʟ! ᴀʙᴏʀᴛɪɴɢ ᴛʀᴀɴꜱꜰᴇʀ.")
+                            # Clean up cursor
+                            try: await loop.run_in_executor(None, source_cursor.close)
+                            except: pass
+                            return # Stop the entire function
+                        
                         logger.error(f"Error inserting batch from {source_db_name} to {active_db_name}: {insert_e}")
                         total_failed_other += len(docs_to_move)
                         continue # Skip deletion for this batch
@@ -576,7 +587,7 @@ async def topdown_cmd(bot, message):
                         except Exception as del_e:
                             logger.error(f"CRITICAL: Failed to delete {len(inserted_ids)} moved docs from {source_db_name}! {del_e}")
                             await sts_msg.edit(f"❌ ᴄʀɪᴛɪᴄᴀʟ ᴇʀʀᴏʀ!\nꜰᴀɪʟᴇᴅ ᴛᴏ ᴅᴇʟᴇᴛᴇ {len(inserted_ids)} ᴅᴏᴄꜱ ꜰʀᴏᴍ {source_db_name} ᴀꜰᴛᴇʀ ᴛʀᴀɴꜱꜰᴇʀ.\n\nᴘʟᴇᴀꜱᴇ ᴄʜᴇᴄᴋ ʟᴏɢꜱ. /cleanmultdb ɪꜱ ʀᴇᴄᴏᴍᴍᴇɴᴅᴇᴅ.")
-                            # Clean up cursor and release lock
+                            # Clean up cursor
                             try: await loop.run_in_executor(None, source_cursor.close)
                             except: pass
                             return # Stop immediately
@@ -618,9 +629,10 @@ async def topdown_cmd(bot, message):
         except Exception as e:
             logger.error(f"Fatal /topdown error: {e}", exc_info=True)
             await sts_msg.edit(f"❌ ꜰᴀᴛᴀʟ ᴇʀʀᴏʀ ᴅᴜʀɪɴɢ ᴛᴏᴘᴅᴏᴡɴ: {e}")
-        # Lock is automatically released by 'async with'
+        # The 'async with' statement will automatically release the lock here,
+        # even if an exception occurred. No 'finally' block is needed.
 
-# --- END OF FIXED COMMAND ---
+# --- END OF CLEANED COMMAND ---
 
 
 @Client.on_message(filters.command('cleanmultdb') & filters.user(ADMINS))
