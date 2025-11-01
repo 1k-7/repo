@@ -494,15 +494,27 @@ async def clean_multi_db_duplicates(bot, message):
 
             BATCH_SIZE = 5000 # Process IDs in batches
 
+            async def process_cursor_batch(cursor, batch_size):
+                # This function runs in the executor
+                docs = []
+                try:
+                    for _ in range(batch_size):
+                        docs.append(cursor.next())
+                except StopIteration:
+                    pass # End of cursor
+                except Exception as e:
+                    logger.error(f"Error fetching batch from cursor: {e}")
+                return docs
+
             while True:
                 # Get next batch of documents (sync call)
-                batch = await loop.run_in_executor(None, lambda: list(cursor.limit(BATCH_SIZE)))
-                if not batch:
+                batch_docs = await loop.run_in_executor(None, partial(process_cursor_batch, cursor, BATCH_SIZE))
+                if not batch_docs:
                     break # No more documents in this collection
 
                 # Process the batch
                 batch_ids_to_remove = []
-                for doc in batch:
+                for doc in batch_docs:
                     checked_in_this_db += 1
                     file_id = doc.get('_id')
                     if not file_id:
@@ -513,7 +525,7 @@ async def clean_multi_db_duplicates(bot, message):
                     else:
                         master_file_ids.add(file_id)
                 
-                total_checked += checked_in_this_db
+                total_checked += len(batch_docs) # Correctly increment total checked
 
                 # Remove duplicates found *in this batch* from *this collection*
                 if batch_ids_to_remove:
