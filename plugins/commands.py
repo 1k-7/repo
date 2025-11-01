@@ -8,11 +8,12 @@ import datetime # Keep this, needed for timedelta
 from Script import script # Keep this for default texts if needed
 from hydrogram import Client, filters, enums
 from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from database.ia_filterdb import db_count_documents, second_db_count_documents, get_file_details, delete_files
+# Use the new get_total_files_count
+from database.ia_filterdb import get_total_files_count, get_file_details, delete_files
 from database.users_chats_db import db
 from datetime import datetime, timedelta, timezone # Keep datetime, add timezone
 import pytz # Keep pytz
-from info import (URL, BIN_CHANNEL, SECOND_FILES_DATABASE_URL, INDEX_CHANNELS, ADMINS,
+from info import (URL, BIN_CHANNEL, INDEX_CHANNELS, ADMINS,
                   IS_VERIFY, VERIFY_TUTORIAL, VERIFY_EXPIRE, SHORTLINK_API, SHORTLINK_URL,
                   DELETE_TIME, SUPPORT_LINK, UPDATES_LINK, LOG_CHANNEL, PICS, IS_STREAM,
                   PM_FILE_DELETE_TIME, BOT_ID, PROTECT_CONTENT, TUTORIAL, # Keep PROTECT_CONTENT and TUTORIAL
@@ -21,7 +22,7 @@ from info import (URL, BIN_CHANNEL, SECOND_FILES_DATABASE_URL, INDEX_CHANNELS, A
 from utils import (get_settings, get_size, is_subscribed, is_check_admin, get_shortlink,
                    get_verify_status, update_verify_status, save_group_settings, temp,
                    get_readable_time, get_wish, get_seconds, upload_image)
-from database.ia_filterdb import collection as primary_collection, second_collection
+# Removed collection imports as they aren't needed here
 from hydrogram.errors import MessageNotModified, FloodWait
 import logging
 from functools import partial # Import partial
@@ -305,34 +306,48 @@ async def stats_cmd(bot, message):
         except Exception as e:
             logger.error(f"Stat collection error ({func.__name__ if hasattr(func, '__name__') else 'unknown'}): {e}")
             return "ᴇʀʀ" # Return error string
+            
     # Fetch stats concurrently where possible
-    files, users, chats, used_files_db_size_raw, used_data_db_size_raw = await asyncio.gather(
-        get_stat_safe(db_count_documents),
-        get_stat_safe(db.total_users_count),
-        get_stat_safe(db.total_chat_count),
-        get_stat_safe(db.get_files_db_size),
-        get_stat_safe(db.get_data_db_size)
+    total_files_task = get_stat_safe(get_total_files_count)
+    users_task = get_stat_safe(db.total_users_count)
+    chats_task = get_stat_safe(db.total_chat_count)
+    data_db_size_task = get_stat_safe(db.get_data_db_size)
+    all_files_db_stats_task = get_stat_safe(db.get_all_files_db_stats)
+
+    total_files, users, chats, used_data_db_size_raw, all_files_db_stats = await asyncio.gather(
+        total_files_task,
+        users_task,
+        chats_task,
+        data_db_size_task,
+        all_files_db_stats_task
     )
+    
     # Format sizes
-    used_files_db_size = get_size(used_files_db_size_raw) if isinstance(used_files_db_size_raw, (int, float)) else used_files_db_size_raw
     used_data_db_size = get_size(used_data_db_size_raw) if isinstance(used_data_db_size_raw, (int, float)) else used_data_db_size_raw
-    # Fetch secondary DB stats if configured
-    secnd_files = '-'; secnd_files_db_used_size = '-'
-    if SECOND_FILES_DATABASE_URL and second_collection is not None:
-        secnd_files, secnd_files_db_used_size_raw = await asyncio.gather(
-            get_stat_safe(second_db_count_documents),
-            get_stat_safe(db.get_second_files_db_size)
-        )
-        secnd_files_db_used_size = get_size(secnd_files_db_used_size_raw) if isinstance(secnd_files_db_used_size_raw, (int, float)) else secnd_files_db_used_size_raw
-    # Calculate total files
-    total_f = 0
-    if isinstance(files, int): total_f += files
-    if isinstance(secnd_files, int): total_f += secnd_files
-    total_files_str = str(total_f) if (isinstance(files, int) and (secnd_files == '-' or isinstance(secnd_files, int))) else "ᴇʀʀ"
+
+    # Format files DB stats string
+    db_stats_str = ""
+    if isinstance(all_files_db_stats, list):
+        for stat in all_files_db_stats:
+            if stat.get('error'):
+                db_stats_str += f"│ 🗂️ {stat['name']}: <code>Error</code>\n"
+            else:
+                db_stats_str += f"│ 🗂️ {stat['name']} ({stat.get('objects', 'N/A')}): <code>{get_size(stat['size'])}</code>\n"
+    else:
+        db_stats_str = "│ 🗂️ ꜰɪʟᴇ ᴅʙ ꜱᴛᴀᴛꜱ: <code>ᴇʀʀ</code>\n"
+
     # Get uptime
     uptime = get_readable_time(time_now() - temp.START_TIME)
+    
     # Edit message with results (Assuming font applied in Script.py)
-    await sts_msg.edit(script.STATUS_TXT.format(users, chats, used_data_db_size, total_files_str, files, used_files_db_size, secnd_files, secnd_files_db_used_size, uptime))
+    await sts_msg.edit(script.STATUS_TXT.format(
+        users, 
+        chats, 
+        used_data_db_size, 
+        total_files, 
+        db_stats_str, 
+        uptime
+    ))
 
 async def get_grp_stg(group_id):
     """Generates the settings inline keyboard for a group."""
@@ -444,171 +459,7 @@ async def ping_cmd(client, message):
     start = monotonic(); msg = await message.reply("👀 ᴘɪɴɢɪɴɢ..."); end = monotonic()
     await msg.edit(f'<b>ᴘᴏɴɢ!\n⏱️ {round((end - start) * 1000)} ᴍꜱ</b>')
 
-@Client.on_message(filters.command(['cleanmultdb', 'cleandb']) & filters.user(ADMINS))
-async def clean_multi_db_duplicates(bot, message):
-    if not SECOND_FILES_DATABASE_URL or second_collection is None:
-        return await message.reply("⚠️ ꜱᴇᴄᴏɴᴅᴀʀʏ ᴅᴀᴛᴀʙᴀꜱᴇ ɪꜱ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ. ᴄᴀɴɴᴏᴛ ᴘᴇʀꜰᴏʀᴍ ᴄʟᴇᴀɴᴜᴘ.")
-    sts_msg = await message.reply("🧹 ꜱᴛᴀʀᴛɪɴɢ ᴄʀᴏꜱꜱ-ᴅᴀᴛᴀʙᴀꜱᴇ ᴅᴜᴘʟɪᴄᴀᴛᴇ ᴄʟᴇᴀɴᴜᴘ...\nᴛʜɪꜱ ᴍɪɢʜᴛ ᴛᴀᴋᴇ ᴀ ᴡʜɪʟᴇ.")
-    loop = asyncio.get_running_loop(); removed = 0; checked = 0; errors = 0; start = time_now()
-    try:
-        logger.info("Fetching all primary DB IDs for cleanup...")
-        primary_cursor = await loop.run_in_executor(None, partial(primary_collection.find, {}, {'_id': 1}))
-        primary_ids = await loop.run_in_executor(None, lambda: {doc['_id'] for doc in primary_cursor})
-        primary_count = len(primary_ids)
-        logger.info(f"Found {primary_count} unique IDs in the primary database.")
-        if primary_count == 0:
-            return await sts_msg.edit("🧹 ᴘʀɪᴍᴀʀʏ ᴅᴀᴛᴀʙᴀꜱᴇ ɪꜱ ᴇᴍᴘᴛʏ. ɴᴏ ᴄʟᴇᴀɴᴜᴘ ɴᴇᴇᴅᴇᴅ.")
-
-        logger.info("Iterating through secondary DB to find duplicates...")
-        
-        BATCH_SIZE = 5000 # Process IDs in batches for efficiency
-        last_update_time = time_now()
-        
-        # Helper function to run in executor
-        def process_batch(cursor_batch):
-            ids_to_remove_batch = []
-            checked_batch = 0
-            for doc in cursor_batch:
-                checked_batch += 1
-                if doc['_id'] in primary_ids:
-                    ids_to_remove_batch.append(doc['_id'])
-            return ids_to_remove_batch, checked_batch
-
-        # Get the cursor (sync)
-        secondary_cursor = await loop.run_in_executor(None, partial(second_collection.find, {}, {'_id': 1}))
-
-        while True:
-            # Get next batch of documents (sync call)
-            batch = await loop.run_in_executor(None, lambda: list(secondary_cursor.limit(BATCH_SIZE)))
-            if not batch:
-                break # No more documents
-
-            # Process the batch in the executor
-            ids_to_remove_batch, checked_batch = await loop.run_in_executor(None, process_batch, batch)
-            checked += checked_batch
-
-            if ids_to_remove_batch:
-                try:
-                    del_res = await loop.run_in_executor(None, partial(second_collection.delete_many, {'_id': {'$in': ids_to_remove_batch}}))
-                    deleted_now = del_res.deleted_count if del_res else 0
-                    removed += deleted_now
-                    logger.info(f"Removed {deleted_now} duplicates from secondary DB (Batch). Total removed: {removed}")
-                except Exception as del_e:
-                    logger.error(f"Error removing batch from secondary DB: {del_e}")
-                    errors += len(ids_to_remove_batch)
-
-            # Update status message periodically
-            current_time = time_now()
-            if current_time - last_update_time > 15: # Update every 15 seconds
-                 elapsed = get_readable_time(current_time - start)
-                 status_text = f"🧹 ᴄʟᴇᴀɴɪɴɢ ᴅᴜᴘʟɪᴄᴀᴛᴇꜱ...\n~ ᴄʜᴇᴄᴋᴇᴅ (ᴅʙ₂): <code>{checked}</code>\n~ ʀᴇᴍᴏᴠᴇᴅ (ᴅʙ₂): <code>{removed}</code>\n~ ᴇʀʀᴏʀꜱ: <code>{errors}</code>\n~ ᴇʟᴀᴘꜱᴇᴅ: <code>{elapsed}</code>"
-                 try: await sts_msg.edit_text(status_text)
-                 except FloodWait as e: await asyncio.sleep(e.value)
-                 except MessageNotModified: pass
-                 except Exception as edit_e: logger.warning(f"Cleanup status edit error: {edit_e}")
-                 last_update_time = current_time
-        
-        # Close cursor after loop (optional, but good practice if possible)
-        try: await loop.run_in_executor(None, secondary_cursor.close)
-        except: pass
-
-        elapsed = get_readable_time(time_now() - start)
-        await sts_msg.edit_text(f"✔️ ᴄʀᴏꜱꜱ-ᴅʙ ᴄʟᴇᴀɴᴜᴘ ᴄᴏᴍᴘʟᴇᴛᴇ!\n\n⏱️ ᴛᴏᴏᴋ: <code>{elapsed}</code>\n\nꜱᴛᴀᴛꜱ:\n~ ᴄʜᴇᴄᴋᴇD (ᴅʙ₂): <code>{checked}</code>\n~ ʀᴇᴍᴏᴠᴇᴅ (ᴅʙ₂): <code>{removed}</code>\n~ ᴇʀʀᴏʀꜱ: <code>{errors}</code>")
-    except Exception as e: logger.error(f"/cleanmultdb error: {e}", exc_info=True); await sts_msg.edit(f"❌ ᴀɴ ᴇʀʀᴏʀ ᴏᴄᴄᴜʀʀᴇᴅ ᴅᴜʀɪɴɢ ᴄʟᴇᴀɴᴜᴘ: {e}")
-
-@Client.on_message(filters.command('dbequal') & filters.user(ADMINS))
-async def equalize_databases(bot, message):
-    if not SECOND_FILES_DATABASE_URL or second_collection is None:
-        return await message.reply("⚠️ ꜱᴇᴄᴏɴᴅᴀʀʏ ᴅᴀᴛᴀʙᴀꜱᴇ ɪꜱ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ. ᴄᴀɴɴᴏᴛ ᴇǫᴜᴀʟɪᴢᴇ.")
-
-    sts_msg = await message.reply("⚖️ ꜱᴛᴀʀᴛɪɴɢ ᴅᴀᴛᴀʙᴀꜱᴇ ᴇǫᴜᴀʟɪᴢᴀᴛɪᴏɴ...\nᴛʜɪꜱ ᴡɪʟʟ ᴍɪɢʀᴀᴛᴇ ꜰɪʟᴇꜱ ꜰʀᴏᴍ ᴅʙ₁ ᴛᴏ ᴅʙ₂ ᴛᴏ ʙᴀʟᴀɴᴄᴇ ᴄᴏᴜɴᴛꜱ. ᴛʜɪꜱ ᴍɪɢʜᴛ ᴛᴀᴋᴇ ᴀ ᴠᴇʀʏ ʟᴏɴɢ ᴛɪᴍᴇ ᴅᴇᴘᴇɴᴅɪɴɢ ᴏɴ ᴛʜᴇ ɴᴜᴍʙᴇʀ ᴏꜰ ꜰɪʟᴇꜱ.")
-    loop = asyncio.get_running_loop(); moved_count = 0; error_count = 0; start_time = time_now()
-
-    try:
-        # Get initial counts
-        total_db1_task = loop.run_in_executor(None, db_count_documents)
-        total_db2_task = loop.run_in_executor(None, second_db_count_documents)
-        total_db1, total_db2 = await asyncio.gather(total_db1_task, total_db2_task)
-
-
-        if total_db1 == "ᴇʀʀ" or total_db2 == "ᴇʀʀ":
-             return await sts_msg.edit("❌ ᴇʀʀᴏʀ ꜰᴇᴛᴄʜɪɴɢ ᴅᴀᴛᴀʙᴀꜱᴇ ᴄᴏᴜɴᴛꜱ. ᴄᴀɴɴᴏᴛ ᴘʀᴏᴄᴇᴇᴅ.")
-
-        total_db1 = int(total_db1); total_db2 = int(total_db2)
-
-        if total_db1 == 0:
-            return await sts_msg.edit("✔️ ᴘʀɪᴍᴀʀʏ ᴅᴀᴛᴀʙᴀꜱᴇ (ᴅʙ₁) ɪꜱ ᴀʟʀᴇᴀᴅʏ ᴇᴍᴘᴛʏ. ɴᴏ ᴍɪɢʀᴀᴛɪᴏɴ ɴᴇᴇᴅᴇᴅ.")
-
-        target_count_per_db = (total_db1 + total_db2) // 2
-        files_to_move_count = total_db1 - target_count_per_db
-
-        if files_to_move_count <= 0:
-            return await sts_msg.edit(f"✔️ ᴅᴀᴛᴀʙᴀꜱᴇꜱ ᴀʀᴇ ᴀʟʀᴇᴀᴅʏ ʙᴀʟᴀɴᴄᴇᴅ ᴏʀ ᴅʙ₁ ʜᴀꜱ ꜰᴇᴡᴇʀ ꜰɪʟᴇꜱ.\n\nᴅʙ₁ ᴄᴏᴜɴᴛ: `{total_db1}`\nᴅʙ₂ ᴄᴏᴜɴᴛ: `{total_db2}`\nᴛᴀʀɢᴇᴛ: `{target_count_per_db}`")
-
-        await sts_msg.edit(f"⚖️ ꜱᴛᴀʀᴛɪɴɢ ᴍɪɢʀᴀᴛɪᴏɴ...\n\nɪɴɪᴛɪᴀʟ ᴄᴏᴜɴᴛꜱ:\n • ᴅʙ₁: `{total_db1}`\n • ᴅʙ₂: `{total_db2}`\n\nᴛᴀʀɢᴇᴛ ᴘᴇʀ ᴅʙ: `{target_count_per_db}`\nᴡɪʟʟ ᴀᴛᴛᴇᴍᴘᴛ ᴛᴏ ᴍᴏᴠᴇ `{files_to_move_count}` ꜰɪʟᴇꜱ ꜰʀᴏᴍ ᴅʙ₁ ᴛᴏ ᴅʙ₂.")
-
-        BATCH_SIZE = 500 # Adjust batch size based on performance/memory
-        last_update_time = time_now()
-
-        while moved_count < files_to_move_count:
-            current_batch_size = min(BATCH_SIZE, files_to_move_count - moved_count)
-            if current_batch_size <= 0:
-                break # Should be handled by while, but safety
-            
-            docs_batch = []
-            try:
-                # Fetch a batch of documents from DB1
-                cursor = await loop.run_in_executor(None, lambda: primary_collection.find().limit(current_batch_size))
-                docs_batch = await loop.run_in_executor(None, list, cursor)
-                
-                if not docs_batch:
-                    logger.warning("DBEqual: No more documents found in DB1, but expected more. Stopping.")
-                    break # No more documents in DB1
-
-                # Insert batch into DB2
-                await loop.run_in_executor(None, partial(second_collection.insert_many, docs_batch, ordered=False))
-                
-                # Get IDs of *successfully* fetched docs
-                ids_to_delete = [d['_id'] for d in docs_batch]
-                
-                # Delete batch from DB1
-                await loop.run_in_executor(None, partial(primary_collection.delete_many, {'_id': {'$in': ids_to_delete}}))
-                
-                moved_now = len(docs_batch)
-                moved_count += moved_now
-                logger.info(f"Moved batch of {moved_now} files from DB1 to DB2. Total moved: {moved_count}")
-
-            except Exception as e:
-                logger.error(f"Error moving batch DB1->DB2: {e}")
-                batch_error_count = len(docs_batch) if docs_batch else current_batch_size
-                error_count += batch_error_count
-                # If a batch fails, log it but continue
-                # We subtract from files_to_move_count to avoid getting stuck
-                files_to_move_count -= batch_error_count
-                logger.warning(f"Skipping {batch_error_count} files due to error, adjusting target.")
-
-            # Update status periodically
-            current_time = time_now()
-            if current_time - last_update_time > 15:
-                elapsed = get_readable_time(current_time - start_time)
-                progress_text = f"⚖️ ᴍɪɢʀᴀᴛɪɴɢ ᴅʙ₁ -> ᴅʙ₂...\n\nᴍᴏᴠᴇᴅ: `{moved_count}` / `{files_to_move_count + error_count}`\nᴇʀʀᴏʀꜱ: `{error_count}`\nᴇʟᴀᴘꜱᴇᴅ: `{elapsed}`"
-                try: await sts_msg.edit(progress_text)
-                except FloodWait as e: await asyncio.sleep(e.value)
-                except MessageNotModified: pass
-                except Exception as edit_e: logger.warning(f"Equalize status edit error: {edit_e}")
-                last_update_time = current_time
-
-        elapsed = get_readable_time(time_now() - start_time)
-        # Get final counts
-        final_total_db1, final_total_db2 = await asyncio.gather(
-            loop.run_in_executor(None, db_count_documents),
-            loop.run_in_executor(None, second_db_count_documents)
-        )
-        await sts_msg.edit(f"✔️ ᴅʙ ᴇǫᴜᴀʟɪᴢᴀᴛɪᴏɴ ᴄᴏᴍᴘʟᴇᴛᴇ!\n\n⏱️ ᴛᴏᴏᴋ: `{elapsed}`\n\nʀᴇꜱᴜʟᴛꜱ:\n • ᴍᴏᴠᴇᴅ: `{moved_count}`\n • ᴇʀʀᴏʀꜱ: `{error_count}`\n\nꜰɪɴᴀʟ ᴄᴏᴜɴᴛꜱ:\n • ᴅʙ₁: `{final_total_db1}`\n • ᴅʙ₂: `{final_total_db2}`")
-
-    except Exception as e:
-        logger.error(f"/dbequal error: {e}", exc_info=True)
-        await sts_msg.edit(f"❌ ᴀɴ ᴇʀʀᴏʀ ᴏᴄᴄᴜʀʀᴇᴅ ᴅᴜʀɪɴɢ ᴇǫᴜᴀʟɪᴢᴀᴛɪᴏɴ: {e}")
+# Removed /cleanmultdb and /dbequal as they are obsolete with the new multi-DB logic
 
 @Client.on_message(filters.command('set_fsub') & filters.user(ADMINS))
 async def set_fsub_cmd(bot, message):

@@ -5,78 +5,84 @@ import base64
 import asyncio
 from functools import partial
 from hydrogram.file_id import FileId
-# Corrected import: Use MessageMediaType instead of FileType
 from hydrogram import enums
 from pymongo import MongoClient, TEXT
 from pymongo.errors import DuplicateKeyError, OperationFailure
 from info import (
-    FILES_DATABASE_URL, SECOND_FILES_DATABASE_URL, DATABASE_NAME, COLLECTION_NAME,
-    USE_CAPTION_FILTER, MAX_BTN, DB_CHANGE_LIMIT
+    DATABASE_URIS, DATABASE_NAME, COLLECTION_NAME, # Use new DATABASE_URIS
+    USE_CAPTION_FILTER, MAX_BTN
 )
 from utils import get_size
 
 logger = logging.getLogger(__name__)
 
-client = None
-db = None
-collection = None
-second_client = None
-second_db = None
-second_collection = None
+# --- New Multi-DB Setup ---
+file_db_clients = []
+file_db_collections = []
 
 try:
-    client = MongoClient(FILES_DATABASE_URL)
-    db = client[DATABASE_NAME]
-    collection = db.get_collection(COLLECTION_NAME) if db is not None else None
-    if collection is not None:
+    # Split the URIs string into a list
+    uris = DATABASE_URIS.split()
+    if not uris:
+        raise ValueError("DATABASE_URIS environment variable is empty.")
+        
+    for i, uri in enumerate(uris):
         try:
-            # Create a text index on file_name for searching
-            collection.create_index([("file_name", TEXT)], background=True)
-        except OperationFailure as e:
-            # Log critical error if index creation fails (often due to DB being full)
-            logger.critical(f"Primary DB Full or Error! Couldn't create index: {e}")
-    logger.info("Connected to Primary Files DB.")
-except Exception as e:
-    logger.critical(f"Cannot connect to Primary Files DB: {e}", exc_info=True)
-    # Depending on requirements, you might want to exit() here if primary DB is essential
-
-if SECOND_FILES_DATABASE_URL:
-    try:
-        second_client = MongoClient(SECOND_FILES_DATABASE_URL)
-        second_db = second_client[DATABASE_NAME]
-        second_collection = second_db.get_collection(COLLECTION_NAME) if second_db is not None else None
-        if second_collection is not None:
+            client = MongoClient(uri)
+            db = client[DATABASE_NAME]
+            collection = db[COLLECTION_NAME]
+            
+            # Try to create index, but log error if it fails (e.g., DB full)
             try:
-                # Create text index on secondary DB as well
-                second_collection.create_index([("file_name", TEXT)], background=True)
+                collection.create_index([("file_name", TEXT)], background=True)
             except OperationFailure as e:
-                logger.warning(f"Secondary DB may be full or error! Couldn't create index: {e}")
-        logger.info("Connected to Secondary Files DB.")
-    except Exception as e:
-        logger.error(f"Cannot connect to Secondary Files DB: {e}. Secondary DB will be disabled.")
-        second_client, second_db, second_collection = None, None, None # Disable secondary DB
-else:
-     logger.info("Secondary Files DB URL not provided or disabled.")
+                if e.code == 8000: # AtlasError: "you are over your space quota"
+                    logger.critical(f"Database #{i+1} is FULL! Couldn't create index: {e.details.get('errmsg', e)}")
+                else:
+                    logger.warning(f"Couldn't create index for Database #{i+1}: {e}")
+            
+            file_db_clients.append(client)
+            file_db_collections.append(collection)
+            logger.info(f"Connected to Files Database #{i+1}.")
+            
+        except Exception as e:
+            logger.error(f"Failed to connect to Files Database #{i+1} (URI: {uri}): {e}")
+            # Continue trying to connect to other DBs
 
-def db_count_documents():
-     """Counts documents in the primary collection."""
-     if collection is None: return 0
-     try: return collection.count_documents({})
-     except Exception as e: logger.error(f"Error counting primary DB: {e}"); return 0
+    if not file_db_collections:
+        logger.critical("No valid file database connections established. Exiting.")
+        exit()
 
-def second_db_count_documents():
-     """Counts documents in the secondary collection."""
-     if second_collection is None: return 0
-     try: return second_collection.count_documents({})
-     except Exception as e: logger.error(f"Error counting secondary DB: {e}"); return 0
+except Exception as e:
+    logger.critical(f"Error processing DATABASE_URIS: {e}", exc_info=True)
+    exit()
+# --- End New Multi-DB Setup ---
+
+
+def get_total_files_count():
+     """Counts total documents across all file collections."""
+     if not file_db_collections: return 0
+     total_count = 0
+     for collection in file_db_collections:
+         try:
+             total_count += collection.count_documents({})
+         except Exception as e:
+             logger.error(f"Error counting DB {collection.database.name}: {e}")
+     return total_count
+
+# This function is now the source for the total count
+db_count_documents = get_total_files_count
+# This is no longer needed
+def second_db_count_documents(): return 0
+
 
 async def save_file(media):
-    """Saves file metadata to the database."""
+    """Saves file metadata to the first available database."""
     loop = asyncio.get_running_loop()
-    if collection is None: logger.error("Primary DB unavailable, cannot save file."); return 'err'
+    if not file_db_collections:
+        logger.error("No file DBs available, cannot save file.")
+        return 'err'
 
-    # Fix: Use the raw file_id string as the database _id.
-    # This removes the need for the faulty unpack_new_file_id function.
     file_id = media.file_id
     if not file_id:
         logger.error("Received media with no file_id")
@@ -84,176 +90,139 @@ async def save_file(media):
 
     # Clean file name
     raw_file_name = str(media.file_name) if media.file_name else "UnknownFile"
-    # Remove potentially problematic characters for searching/indexing
     file_name = re.sub(r"[@\(\)\[\]]", "", raw_file_name)
-    file_name = re.sub(r"(_|\-|\.|\+)+", " ", file_name).strip() # Replace separators with space
-    file_name = re.sub(r'\s+', ' ', file_name) # Condense multiple spaces
+    file_name = re.sub(r"(_|\-|\.|\+)+", " ", file_name).strip()
+    file_name = re.sub(r'\s+', ' ', file_name)
 
     # Clean caption
     caption_text = str(media.caption) if media.caption is not None else ""
-    # Remove mentions, links, and separators from caption for cleaner search data
     file_caption = re.sub(r"@\w+|(_|\-|\.|\+)|https?://\S+", " ", caption_text).strip()
-    file_caption = re.sub(r'\s+', ' ', file_caption) # Condense multiple spaces
+    file_caption = re.sub(r'\s+', ' ', file_caption)
 
     document = {
-        '_id': file_id, # Use the original string file_id as the unique document ID
+        '_id': file_id,
         'file_name': file_name,
         'file_size': media.file_size or 0,
         'caption': file_caption
-        }
+    }
 
-    # Check for duplicates in both databases before inserting
+    # Check for duplicates across ALL databases first
     try:
-        # Check primary DB
-        is_in_primary = await loop.run_in_executor(None, partial(collection.find_one, {'_id': file_id}, {'_id': 1}))
-        if is_in_primary:
-            logger.debug(f'[Duplicate] Already in Primary DB: {file_name}'); return 'dup'
-        # Check secondary DB if it exists
-        if second_collection is not None:
-            is_in_secondary = await loop.run_in_executor(None, partial(second_collection.find_one, {'_id': file_id}, {'_id': 1}))
-            if is_in_secondary:
-                logger.debug(f'[Duplicate] Already in Secondary DB: {file_name}'); return 'dup'
+        find_tasks = [
+            loop.run_in_executor(None, partial(collection.find_one, {'_id': file_id}, {'_id': 1}))
+            for collection in file_db_collections
+        ]
+        duplicates = await asyncio.gather(*find_tasks)
+        if any(duplicates):
+            logger.debug(f'[Duplicate] File already in one of the DBs: {file_name}')
+            return 'dup'
     except Exception as e:
         logger.error(f"Duplicate check failed for file ID {file_id}: {e}. Proceeding with insert attempt...")
 
-    # Determine which DB to use based on primary DB size limit
-    db_to_use, db_name_log = (collection, "primary") # Default to primary
-    if second_collection is not None:
+    # Try to insert into the first available (non-full) database
+    for i, collection in enumerate(file_db_collections):
+        db_name_log = f"DB #{i+1}"
         try:
-            # Check primary DB size (run synchronously in executor)
-            # Use client.admin.command('dbStats') on the *client*, not the db object
-            primary_db_stats = await loop.run_in_executor(None, lambda: client.admin.command('dbStats', 1, db=DATABASE_NAME))
-            current_size_bytes = primary_db_stats.get('dataSize', 0)
-            size_limit_bytes = DB_CHANGE_LIMIT * 1024 * 1024
-
-            if current_size_bytes >= size_limit_bytes:
-                 db_to_use, db_name_log = (second_collection, "secondary")
-                 logger.info(f"Primary DB size ({get_size(current_size_bytes)}) >= limit ({DB_CHANGE_LIMIT}MB). Using secondary DB.")
+            await loop.run_in_executor(None, partial(collection.insert_one, document))
+            logger.info(f'Saved [{get_size(document["file_size"])}] to {db_name_log}: {file_name}')
+            return 'suc' # Success!
+        except DuplicateKeyError:
+            logger.warning(f'Duplicate Key error on insert ({db_name_log}): {file_name}')
+            return 'dup' # Should have been caught by the check above, but as a failsafe
+        except OperationFailure as e:
+             # Error code 8000 is "AtlasError" for "over space quota"
+             if e.code == 8000:
+                 logger.warning(f"{db_name_log} is FULL. Trying next DB... (Error: {e.details.get('errmsg', e)})")
+                 continue # Try the next database in the list
+             else:
+                 logger.error(f"MongoDB Operation Failure on {db_name_log}: {e}")
+                 return 'err' # Return error for other operation failures
         except Exception as e:
-            logger.error(f"Failed to check primary DB size: {e}. Defaulting to primary DB.")
+            logger.error(f"Unexpected error saving file to {db_name_log}: {e}", exc_info=True)
+            return 'err' # Return error for other exceptions
+    
+    # If loop finishes, all databases are full or failed
+    logger.critical(f"All {len(file_db_collections)} databases are full or failed. Cannot save file: {file_name}")
+    return 'err'
 
-    # Attempt to insert the document
-    try:
-        await loop.run_in_executor(None, partial(db_to_use.insert_one, document))
-        logger.info(f'Saved [{get_size(document["file_size"])}] to {db_name_log} DB: {file_name}')
-        return 'suc' # Success
-    except DuplicateKeyError:
-        # This might happen in rare race conditions if duplicate check failed earlier
-        logger.warning(f'Duplicate Key error on insert ({db_name_log} DB): {file_name}'); return 'dup'
-    except OperationFailure as e:
-         # Likely DB is full or other Atlas/Mongo error
-         logger.error(f"MongoDB Operation Failure on {db_name_log} DB: {e}")
-         # If primary failed and secondary exists, try saving to secondary
-         if db_name_log == "primary" and second_collection is not None:
-             logger.warning("Operation Failure on primary, attempting to save to secondary DB...")
-             try:
-                 # Ensure it's not already in secondary (another check in case of race condition)
-                 if await loop.run_in_executor(None, partial(second_collection.find_one, {'_id': file_id}, {'_id': 1})):
-                     logger.warning(f'[Duplicate] Found in Secondary DB after primary OpFail: {file_name}'); return 'dup'
-                 # Try inserting into secondary
-                 await loop.run_in_executor(None, partial(second_collection.insert_one, document))
-                 logger.info(f'Saved [{get_size(document["file_size"])}] to secondary DB after primary OpFail: {file_name}')
-                 return 'suc'
-             except DuplicateKeyError:
-                 logger.warning(f'Duplicate Key error on secondary DB insert (after primary OpFail): {file_name}'); return 'dup'
-             except Exception as e2:
-                 logger.error(f"Failed to save to secondary DB after primary OpFail: {e2}"); return 'err'
-         else:
-             return 'err' # Return error if primary failed and no secondary, or if secondary failed too
-    except Exception as e:
-        logger.error(f"Unexpected error saving file ({db_name_log} DB): {e}", exc_info=True); return 'err'
 
 async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None):
-    """Searches for files in the database(s)."""
+    """Searches for files across all databases."""
     loop = asyncio.get_running_loop()
     query = str(query).strip()
-    if not query: return [], '', 0 # Return empty if query is empty
+    if not query: return [], '', 0
 
-    # Prepare regex pattern for searching words in order
-    words = [re.escape(word) for word in query.split()] # Escape special regex chars in user query
-    raw_pattern = r'\b' + r'.*?\b'.join(words) + r'.*' # \b ensures word boundaries, .*? matches anything non-greedily between words
-    try: regex = re.compile(raw_pattern, flags=re.IGNORECASE)
+    words = [re.escape(word) for word in query.split()]
+    raw_pattern = r'\b' + r'.*?\b'.join(words) + r'.*'
+    try:
+        regex = re.compile(raw_pattern, flags=re.IGNORECASE)
     except re.error:
-        logger.warning(f"Invalid regex pattern generated for query: '{query}'. Falling back to simple text search.")
-        # Fallback to a simpler regex that might not be as good
+        logger.warning(f"Invalid regex for query: '{query}'. Falling back.")
         simple_regex_pattern = r".*".join(words)
         regex = re.compile(simple_regex_pattern, flags=re.IGNORECASE)
 
-
-    # Define the base filter query
     filter_query = {'file_name': regex}
-    if USE_CAPTION_FILTER: # Optionally search in captions too
+    if USE_CAPTION_FILTER:
         filter_query = {'$or': [{'file_name': regex}, {'caption': regex}]}
 
-    results = []; total_results = 0; total_primary = 0; total_secondary = 0
+    results = []; total_results = 0
 
-    async def run_find(db_collection, q_filter, skip, limit):
-        """Helper to run find and count in executor."""
+    async def run_find(db_collection, q_filter):
+        """Helper to run find and count in executor for one collection."""
         if db_collection is None: return [], 0
         try:
-            # Count matching documents (run in executor)
-            count = await loop.run_in_executor(None, partial(db_collection.count_documents, q_filter))
-            # Find documents with skip and limit (run in executor)
-            cursor = db_collection.find(q_filter).skip(skip).limit(limit)
-            # Convert cursor to list (run in executor)
+            # Note: We query *all* results and slice later.
+            # For large DBs, this is inefficient but simpler than managing offsets across N DBs.
+            cursor = db_collection.find(q_filter) 
             docs = await loop.run_in_executor(None, list, cursor)
+            count = len(docs) # Count from the returned docs
             return docs, count
         except Exception as e:
-            logger.error(f"Database query error ({db_collection.name}): {e}"); return [], 0
+            logger.error(f"Database query error ({db_collection.database.name}): {e}"); return [], 0
 
-    # Search primary database
-    primary_docs, primary_count = await run_find(collection, filter_query, 0, 1000) # Get more initially to check
-    results.extend(primary_docs)
-    total_primary = primary_count
+    # Run find on all collections concurrently
+    find_tasks = [run_find(collection, filter_query) for collection in file_db_collections]
+    all_db_results = await asyncio.gather(*find_tasks)
 
-    # If secondary DB exists
-    if second_collection is not None:
-        secondary_docs, secondary_count = await run_find(second_collection, filter_query, 0, 1000) # Get more initially
-        results.extend(secondary_docs)
-        total_secondary = secondary_count
+    for docs, count in all_db_results:
+        results.extend(docs)
+        total_results += count
 
     # Filter by language if specified (applied after combined results)
     if lang:
-        lang = lang.lower() # Ensure case-insensitivity
-        # Filter results list comprehension
+        lang = lang.lower()
         lang_files = [
             f for f in results
             if lang in f.get('file_name', '').lower() or lang in f.get('caption', '').lower()
         ]
-        total_results = len(lang_files) # Update total count based on language filter
-        # Apply offset and limit to the language-filtered list
-        files_to_return = lang_files[offset : offset + max_results] # Python slicing handles offset/limit
+        total_results = len(lang_files) # Update total count
+        files_to_return = lang_files[offset : offset + max_results]
     else:
-        # If no language filter, just take the combined results up to max_results
+        # If no language filter, just slice the combined results
         files_to_return = results[offset : offset + max_results]
-        total_results = total_primary + total_secondary # Total is combined count
+        # total_results is already sum of all counts
 
-
-    # Calculate next offset for pagination
-    current_page_count = len(files_to_return)
-    next_offset_val = offset + current_page_count
-    # If the next offset is greater than or equal to total results, there are no more pages
+    # Calculate next offset
+    next_offset_val = offset + len(files_to_return)
     next_offset_str = str(next_offset_val) if next_offset_val < total_results else ''
 
     return files_to_return, next_offset_str, total_results
 
 
 async def delete_files(query):
-    """Deletes files matching the query from both databases."""
+    """Deletes files matching the query from all databases."""
     loop = asyncio.get_running_loop(); total_deleted = 0
     query = str(query).strip()
     if not query: return 0
-    # Prepare regex for deletion
+
     words = [re.escape(word) for word in query.split()]
     raw_pattern = r'\b' + r'.*?\b'.join(words) + r'.*'
     try: regex = re.compile(raw_pattern, flags=re.IGNORECASE)
-    except re.error:
+    except re.error: 
         simple_regex_pattern = r".*".join(words)
         regex = re.compile(simple_regex_pattern, flags=re.IGNORECASE)
-
+        
     filter_query = {'file_name': regex}
-    # Could add caption filter here too if needed:
-    # filter_query = {'$or': [{'file_name': regex}, {'caption': regex}]}
 
     async def run_delete(db_collection, q_filter):
         """Helper to run delete_many in executor."""
@@ -262,29 +231,29 @@ async def delete_files(query):
             result = await loop.run_in_executor(None, partial(db_collection.delete_many, q_filter))
             return result.deleted_count if result else 0
         except Exception as e:
-            logger.error(f"Error deleting from {db_collection.name}: {e}"); return 0
+            logger.error(f"Error deleting from {db_collection.database.name}: {e}"); return 0
 
-    # Delete from primary and secondary DBs
-    deleted1 = await run_delete(collection, filter_query); total_deleted += deleted1
-    if second_collection is not None:
-        deleted2 = await run_delete(second_collection, filter_query); total_deleted += deleted2
+    # Run delete on all collections concurrently
+    delete_tasks = [run_delete(collection, filter_query) for collection in file_db_collections]
+    deleted_counts = await asyncio.gather(*delete_tasks)
+    total_deleted = sum(deleted_counts)
 
-    logger.info(f"Deleted {total_deleted} files matching query: '{query}'")
+    logger.info(f"Deleted {total_deleted} files matching query: '{query}' from all DBs.")
     return total_deleted
 
 async def get_file_details(query_id):
-    """Retrieves file details by its unique ID from either database."""
+    """Retrieves file details by its unique ID from any database."""
     loop = asyncio.get_running_loop()
-    file_details = None
-    # Try primary DB first
-    if collection is not None:
-         try: file_details = await loop.run_in_executor(None, partial(collection.find_one, {'_id': query_id}))
-         except Exception as e: logger.error(f"Error find_one in primary DB ({query_id}): {e}")
-    # If not found or primary DB error, try secondary DB
-    if not file_details and second_collection is not None:
-         try: file_details = await loop.run_in_executor(None, partial(second_collection.find_one, {'_id': query_id}))
-         except Exception as e: logger.error(f"Error find_one in secondary DB ({query_id}): {e}")
-    # Return as a list (consistent with old code) or empty list
-    return [file_details] if file_details else []
-
-# Fix: Removed the unnecessary and buggy encode_file_id and unpack_new_file_id functions.
+    
+    # Check all databases
+    for collection in file_db_collections:
+        file_details = None
+        try:
+            file_details = await loop.run_in_executor(None, partial(collection.find_one, {'_id': query_id}))
+        except Exception as e:
+            logger.error(f"Error find_one in {collection.database.name} ({query_id}): {e}")
+        
+        if file_details:
+            return [file_details] # Return as list if found
+            
+    return [] # Return empty list if not found in any DB

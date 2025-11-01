@@ -15,7 +15,7 @@ class script(object):
 ♢ ᴜꜱᴇʀɴᴀᴍᴇ: @ActualHomie
 ♢ ᴄᴏᴜɴᴛʀʏ: 𝚜𝚘𝚖𝚎𝚠𝚑𝚎𝚛𝚎 𝚒𝚗 𝚛𝚎𝚊𝚕𝚒𝚝𝚢"""
 
-    # Reworked STATUS_TXT
+    # Reworked STATUS_TXT for Multi-DB
     STATUS_TXT = """<blockquote>ʙᴏᴛ ꜱᴛᴀᴛɪꜱᴛɪᴄꜱ</blockquote>
 
 <blockquote>╭─[ ᴜꜱᴇʀ ɪɴꜰᴏ ]───➣
@@ -24,20 +24,18 @@ class script(object):
 ╰──────────────➣</blockquote>
 <blockquote>╭─[ ᴅᴀᴛᴀʙᴀꜱᴇ ꜱᴛᴀᴛꜱ ]────➣
 │ 🗳️ ʙᴏᴛ ᴅᴀᴛᴀ ꜱɪᴢᴇ: <code>{}</code>
+│ 💾 ᴛᴏᴛᴀʟ ꜰɪʟᴇꜱ (ᴀʟʟ ᴅʙꜱ): <code>{}</code>
 │
-│ 💾 ᴛᴏᴛᴀʟ ꜰɪʟᴇꜱ: <code>{}</code>
-│
-│ 🗂️ ᴅʙ¹ ꜰɪʟᴇꜱ: <code>{}</code> | ꜱɪᴢᴇ: <code>{}</code>
-│ 🗂️ ᴅʙ² ꜰɪʟᴇꜱ: <code>{}</code> | ꜱɪᴢᴇ: <code>{}</code>
+{}
 ╰─────────────────────────➣</blockquote>
 <blockquote> ⏳ ʙᴏᴛ ᴜᴘᴛɪᴍᴇ: <code>{}</code> </blockquote>
-""" # Removed premium user count
+""" # Removed premium user count, added {} for dynamic DB stats
 
     NEW_GROUP_TXT = """#ɴᴇᴡ_ɢʀᴏᴜᴘ
 ♢ ᴛɪᴛʟᴇ: {}
 ♢ ɪᴅ: <code>{}</code>
 ♢ ᴜꜱᴇʀɴᴀᴍᴇ: {}
-♢ ᴍᴇᴍʙᴇʀꜱ: <code>{}</code>"""
+♢ ᴍᴇᴍʙᴇʀꜱ: code>{}</code>"""
 
     NEW_USER_TXT = """#ɴᴇᴡ_ᴜꜱᴇʀ
 ♢ ɴᴀᴍᴇ: {}
@@ -82,7 +80,6 @@ class script(object):
 /stats ⤬ ɢᴇᴛ ʙᴏᴛ ꜱᴛᴀᴛɪꜱᴛɪᴄꜱ
 /delete [ǫᴜᴇʀʏ] ⤬ ᴅᴇʟᴇᴛᴇ ꜰɪʟᴇꜱ
 /delete_all ⤬ ᴅᴇʟᴇᴛᴇ ᴀʟʟ ɪɴᴅᴇхᴇᴅ ꜰɪʟᴇꜱ (⚠️)
-/cleanmultdb ⤬ ʀᴇᴍᴏᴠᴇ ᴄʀᴏꜱꜱ-ᴅʙ ᴅᴜᴘʟɪᴄᴀᴛᴇꜱ
 /broadcast ⤬ ꜱᴇɴᴅ ᴍꜱɢ ᴛᴏ ᴜꜱᴇʀꜱ (ʀᴇᴘʟʏ)
 /grp_broadcast ⤬ ꜱᴇɴᴅ ᴍꜱɢ ᴛᴏ ɢʀᴏᴜᴘꜱ (ʀᴇᴘʟʏ)
 /pin_broadcast ⤬ ʙʀᴏᴀᴅᴄᴀꜱᴛ & ᴘɪɴ (ᴜꜱᴇʀꜱ)
@@ -99,7 +96,7 @@ class script(object):
 /off_auto_filter ⤬ ᴅɪꜱᴀʙʟᴇ ᴀᴜᴛᴏ-ꜰɪʟᴛᴇʀ
 /on_auto_filter ⤬ ᴇɴᴀʙʟᴇ ᴀᴜᴛᴏ-ꜰɪʟᴛᴇʀ
 /off_pm_search ⤬ ᴅɪꜱᴀʙʟᴇ ᴘᴍ ꜱᴇᴀʀᴄʜ
-/on_pm_search ⤬ ᴇɴᴀʙʟᴇ ᴘᴍ ꜱᴇᴀʀᴄʜ""" # Removed premium commands
+/on_pm_search ⤬ ᴇɴᴀʙʟᴇ ᴘᴍ ꜱᴇᴀʀᴄʜ""" # Removed /cleanmultdb and /dbequal
 
     USER_COMMAND_TXT = """<b>✨ ᴜꜱᴇʀ ᴄᴏᴍᴍᴀɴᴅꜱ:</b>
 
@@ -114,4 +111,3 @@ class script(object):
 ᴅᴇᴠᴇʟᴏᴘᴇʀ - @ActualHomie"""
 
     # Removed PLAN_TXT
-

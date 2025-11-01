@@ -37,7 +37,7 @@ if len(BOT_TOKEN) == 0:
     logger.error('BOT_TOKEN is missing, exiting now')
     exit()
 BOT_ID = BOT_TOKEN.split(":")[0]
-PORT = int(environ.get('PORT', '80')) # Default port for web server
+PORT = int(environ.get('PORT', '8080')) # Default port for web server
 PICS = (environ.get('PICS', 'https://files.catbox.moe/e0a7rw.png')).split() # List of image URLs
 
 # Bot Admins
@@ -72,14 +72,18 @@ DATA_DATABASE_URL = environ.get('DATA_DATABASE_URL', "mongodb+srv://realbloodkin
 if len(DATA_DATABASE_URL) == 0:
     logger.error('DATA_DATABASE_URL is missing, exiting now')
     exit()
-FILES_DATABASE_URL = environ.get('FILES_DATABASE_URL', "mongodb+srv://aldrinrishi01:GTgduaENtVUk6VLt@norcluster.qsaqymo.mongodb.net/?retryWrites=true&w=majority&appName=norCluster")
-if len(FILES_DATABASE_URL) == 0:
-    logger.error('FILES_DATABASE_URL is missing, exiting now')
+
+# --- New Dynamic Files Database Setup ---
+DATABASE_URIS = environ.get('DATABASE_URIS', "mongodb+srv://aldrinrishi01:GTgduaENtVUk6VLt@norcluster.qsaqymo.mongodb.net/?retryWrites=true&w=majority&appName=norCluster mongodb+srv://lordemperean:dpiU0sq9yGR5PjWc@cluster0.gvgbd5e.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
+if len(DATABASE_URIS) == 0:
+    logger.error('DATABASE_URIS is missing, exiting now. Please provide at least one MongoDB URL.')
     exit()
-SECOND_FILES_DATABASE_URL = environ.get('SECOND_FILES_DATABASE_URL', "mongodb+srv://lordemperean:dpiU0sq9yGR5PjWc@cluster0.gvgbd5e.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
-if len(SECOND_FILES_DATABASE_URL) == 0:
-    logger.info('SECOND_FILES_DATABASE_URL is empty') # Optional secondary DB
-DB_CHANGE_LIMIT = int(environ.get('DB_CHANGE_LIMIT', 450)) # Limit in MB for switching DBs
+# --- End New Setup ---
+
+# Remove old single DB variables
+# FILES_DATABASE_URL = environ.get('FILES_DATABASE_URL', "mongodb+srv://aldrinrishi01:GTgduaENtVUk6VLt@norcluster.qsaqymo.mongodb.net/?retryWrites=true&w=majority&appName=norCluster")
+# SECOND_FILES_DATABASE_URL = environ.get('SECOND_FILES_DATABASE_URL', "mongodb+srv://lordemperean:dpiU0sq9yGR5PjWc@cluster0.gvgbd5e.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
+# DB_CHANGE_LIMIT = int(environ.get('DB_CHANGE_LIMIT', 450)) # No longer needed
 
 DATABASE_NAME = environ.get('DATABASE_NAME', "Cluster0") # Shared DB name
 COLLECTION_NAME = environ.get('COLLECTION_NAME', 'Files') # Collection name for files

@@ -1,7 +1,7 @@
 from pymongo import MongoClient
 from info import (
-    BOT_ID, ADMINS, DATABASE_NAME, DATA_DATABASE_URL, FILES_DATABASE_URL,
-    SECOND_FILES_DATABASE_URL, IMDB_TEMPLATE, WELCOME_TEXT, LINK_MODE,
+    BOT_ID, ADMINS, DATABASE_NAME, DATA_DATABASE_URL, # Removed FILES_DATABASE_URL, SECOND_FILES_DATABASE_URL
+    IMDB_TEMPLATE, WELCOME_TEXT, LINK_MODE,
     TUTORIAL, SHORTLINK_URL, SHORTLINK_API, SHORTLINK, FILE_CAPTION,
     IMDB, WELCOME, SPELL_CHECK, PROTECT_CONTENT, AUTO_DELETE, IS_STREAM,
     VERIFY_EXPIRE
@@ -11,19 +11,14 @@ from datetime import datetime, timedelta, timezone # Added timezone
 import logging
 import pytz # Import pytz
 
+# Import the new multi-DB connection objects
+from .ia_filterdb import file_db_clients, file_db_collections
+
 logger = logging.getLogger(__name__)
 
 # --- Database Connections ---
-client = None; db_con = None; files_db_client = None; files_db = None
-second_files_db_client = None; second_files_db = None
+# Remove old file_db clients, they are now in ia_filterdb.py
 data_db_client = None; data_db = None
-
-try:
-    files_db_client = MongoClient(FILES_DATABASE_URL)
-    files_db = files_db_client[DATABASE_NAME]
-    logger.info("Connected to Primary Files DB.")
-except Exception as e:
-    logger.critical(f"Cannot connect to primary files DB: {e}", exc_info=True); exit()
 
 try:
     data_db_client = MongoClient(DATA_DATABASE_URL)
@@ -32,16 +27,7 @@ try:
 except Exception as e:
     logger.critical(f"Cannot connect to data DB: {e}", exc_info=True); exit()
 
-if SECOND_FILES_DATABASE_URL:
-    try:
-        second_files_db_client = MongoClient(SECOND_FILES_DATABASE_URL)
-        second_files_db = second_files_db_client[DATABASE_NAME]
-        logger.info("Connected to secondary files DB.")
-    except Exception as e:
-        logger.error(f"Cannot connect to secondary files DB: {e}. Secondary DB disabled.")
-        SECOND_FILES_DATABASE_URL = None
-else:
-     logger.info("Secondary Files DB URL not provided or disabled.")
+# The file DB connections are already handled in ia_filterdb
 
 
 class Database:
@@ -205,8 +191,9 @@ class Database:
 
     def update_settings(self, id, settings):
         # Updates group settings (synchronous)
-        self.grp.update_one({'id': int(id)}, {'$set': {'settings': settings}})
-        logger.debug(f"Updated settings for group {id}.")
+        # Fix: Use $set to update only specified keys
+        self.grp.update_one({'id': int(id)}, {'$set': {f'settings.{k}': v for k, v in settings.items()}})
+        logger.debug(f"Updated settings for group {id}: {settings.keys()}")
 
     def get_settings(self, id):
         # Gets group settings, merging with defaults (synchronous)
@@ -279,15 +266,46 @@ class Database:
     def get_all_chats(self):
         return self.grp.find({})
 
-    def get_files_db_size(self):
-        try: return files_db.command("dbstats")['dataSize']
-        except Exception as e: logger.error(f"Error get_files_db_size: {e}"); return 0
+    def get_all_files_db_stats(self):
+        """Gets stats for all connected file databases."""
+        stats = []
+        if not file_db_clients:
+            return stats
+            
+        for i, client in enumerate(file_db_clients):
+            db_name = DATABASE_NAME
+            coll_name = COLLECTION_NAME
+            try:
+                # Use the collection object's database name if available
+                if i < len(file_db_collections):
+                    coll = file_db_collections[i]
+                    db_name = coll.database.name
+                    coll_name = coll.name
 
-    def get_second_files_db_size(self):
-        if second_files_db is not None:
-             try: return second_files_db.command("dbstats")['dataSize']
-             except Exception as e: logger.error(f"Error get_second_files_db_size: {e}"); return 0
-        return 0
+                # Get dbStats for the specific database
+                db_stats = client[db_name].command("dbstats")
+                
+                stats.append({
+                    'name': f"DB #{i+1}",
+                    'db_name': db_name,
+                    'coll_name': coll_name,
+                    'size': db_stats.get('dataSize', 0),
+                    'storage_size': db_stats.get('storageSize', 0),
+                    'collections': db_stats.get('collections', 0),
+                    'objects': db_stats.get('objects', 0) # Total objects in DB
+                })
+            except Exception as e:
+                logger.error(f"Error get_files_db_stats for DB #{i+1}: {e}")
+                stats.append({
+                    'name': f"DB #{i+1}",
+                    'db_name': db_name,
+                    'coll_name': coll_name,
+                    'size': 0,
+                    'error': str(e)
+                })
+        return stats
+
+    # Removed get_second_files_db_size()
 
     def get_data_db_size(self):
         try: return data_db.command("dbstats")['dataSize']
