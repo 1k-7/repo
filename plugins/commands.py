@@ -8,8 +8,8 @@ import datetime # Keep this, needed for timedelta
 from Script import script # Keep this for default texts if needed
 from hydrogram import Client, filters, enums
 from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-# Use the new get_total_files_count
-from database.ia_filterdb import get_total_files_count, get_file_details, delete_files
+# Use the new get_total_files_count and import collections list
+from database.ia_filterdb import get_total_files_count, get_file_details, delete_files, file_db_collections
 from database.users_chats_db import db
 from datetime import datetime, timedelta, timezone # Keep datetime, add timezone
 import pytz # Keep pytz
@@ -18,12 +18,10 @@ from info import (URL, BIN_CHANNEL, INDEX_CHANNELS, ADMINS,
                   DELETE_TIME, SUPPORT_LINK, UPDATES_LINK, LOG_CHANNEL, PICS, IS_STREAM,
                   PM_FILE_DELETE_TIME, BOT_ID, PROTECT_CONTENT, TUTORIAL, # Keep PROTECT_CONTENT and TUTORIAL
                   IMDB, SPELL_CHECK, AUTO_DELETE, WELCOME, SHORTLINK, LINK_MODE # Keep group setting defaults
-                  # REMOVED SECOND_FILES_DATABASE_URL from here
                   )
 from utils import (get_settings, get_size, is_subscribed, is_check_admin, get_shortlink,
                    get_verify_status, update_verify_status, save_group_settings, temp,
                    get_readable_time, get_wish, get_seconds, upload_image)
-# Removed collection imports as they aren't needed here
 from hydrogram.errors import MessageNotModified, FloodWait
 import logging
 from functools import partial # Import partial
@@ -333,7 +331,15 @@ async def stats_cmd(bot, message):
             if stat.get('error'):
                 db_stats_str += f"│ 🗂️ {stat['name']}: <code>Error</code>\n"
             else:
-                db_stats_str += f"│ 🗂️ {stat['name']} ({stat.get('objects', 'N/A')}): <code>{get_size(stat['size'])}</code>\n"
+                # Show file count (objects) for this specific collection
+                db_file_count = "N/A"
+                try:
+                    for coll in file_db_collections:
+                        if coll.database.name == stat['db_name'] and coll.name == stat['coll_name']:
+                            db_file_count = await loop.run_in_executor(None, lambda: coll.count_documents({}))
+                            break
+                except: pass
+                db_stats_str += f"│ 🗂️ {stat['name']} ({db_file_count} ꜰɪʟᴇꜱ): <code>{get_size(stat['size'])}</code>\n"
     else:
         db_stats_str = "│ 🗂️ ꜰɪʟᴇ ᴅʙ ꜱᴛᴀᴛꜱ: <code>ᴇʀʀ</code>\n"
 
@@ -460,7 +466,91 @@ async def ping_cmd(client, message):
     start = monotonic(); msg = await message.reply("👀 ᴘɪɴɢɪɴɢ..."); end = monotonic()
     await msg.edit(f'<b>ᴘᴏɴɢ!\n⏱️ {round((end - start) * 1000)} ᴍꜱ</b>')
 
-# Removed /cleanmultdb and /dbequal as they are obsolete with the new multi-DB logic
+@Client.on_message(filters.command('cleanmultdb') & filters.user(ADMINS))
+async def clean_multi_db_duplicates(bot, message):
+    if len(file_db_collections) < 2:
+        return await message.reply("⚠️ ᴏɴʟʏ ᴏɴᴇ ᴅᴀᴛᴀʙᴀꜱᴇ ɪꜱ ᴄᴏɴꜰɪɢᴜʀᴇᴅ. ɴᴏ ᴅᴜᴘʟɪᴄᴀᴛᴇꜱ ᴛᴏ ᴄʟᴇᴀɴ.")
+    
+    sts_msg = await message.reply("🧹 ꜱᴛᴀʀᴛɪɴɢ ᴄʀᴏꜱꜱ-ᴅᴀᴛᴀʙᴀꜱᴇ ᴅᴜᴘʟɪᴄᴀᴛᴇ ᴄʟᴇᴀɴᴜᴘ...\nᴛʜɪꜱ ᴍɪɢʜᴛ ᴛᴀᴋᴇ ᴀ ᴠᴇʀʏ ʟᴏɴɢ ᴛɪᴍᴇ.")
+    loop = asyncio.get_running_loop()
+    master_file_ids = set()
+    total_removed = 0
+    total_checked = 0
+    total_errors = 0
+    start = time_now()
+
+    try:
+        # Iterate through each DB, starting from the first
+        for i, collection in enumerate(file_db_collections):
+            db_name_log = f"DB #{i+1}"
+            logger.info(f"Processing {db_name_log} for duplicate cleanup...")
+            
+            ids_to_remove = []
+            checked_in_this_db = 0
+            last_update_time = time_now()
+
+            # Get the cursor (sync)
+            cursor = await loop.run_in_executor(None, partial(collection.find, {}, {'_id': 1}))
+
+            BATCH_SIZE = 5000 # Process IDs in batches
+
+            while True:
+                # Get next batch of documents (sync call)
+                batch = await loop.run_in_executor(None, lambda: list(cursor.limit(BATCH_SIZE)))
+                if not batch:
+                    break # No more documents in this collection
+
+                # Process the batch
+                batch_ids_to_remove = []
+                for doc in batch:
+                    checked_in_this_db += 1
+                    file_id = doc.get('_id')
+                    if not file_id:
+                        continue
+                        
+                    if file_id in master_file_ids:
+                        batch_ids_to_remove.append(file_id)
+                    else:
+                        master_file_ids.add(file_id)
+                
+                total_checked += checked_in_this_db
+
+                # Remove duplicates found *in this batch* from *this collection*
+                if batch_ids_to_remove:
+                    try:
+                        del_res = await loop.run_in_executor(None, partial(collection.delete_many, {'_id': {'$in': batch_ids_to_remove}}))
+                        deleted_now = del_res.deleted_count if del_res else 0
+                        total_removed += deleted_now
+                        logger.info(f"Removed {deleted_now} duplicates from {db_name_log}. Total removed: {total_removed}")
+                    except Exception as del_e:
+                        logger.error(f"Error removing batch from {db_name_log}: {del_e}")
+                        total_errors += len(batch_ids_to_remove)
+                
+                # Update status message periodically
+                current_time = time_now()
+                if current_time - last_update_time > 15: # Update every 15 seconds
+                     elapsed = get_readable_time(current_time - start)
+                     status_text = f"🧹 ᴄʟᴇᴀɴɪɴɢ ᴅᴜᴘʟɪᴄᴀᴛᴇꜱ... (ᴘʀᴏᴄᴇꜱꜱɪɴɢ {db_name_log})\n~ ᴄʜᴇᴄᴋᴇᴅ (ᴛᴏᴛᴀʟ): <code>{total_checked}</code>\n~ ʀᴇᴍᴏᴠᴇᴅ (ᴛᴏᴛᴀʟ): <code>{total_removed}</code>\n~ ᴇʀʀᴏʀꜱ: <code>{total_errors}</code>\n~ ᴇʟᴀᴘꜱᴇᴅ: <code>{elapsed}</code>"
+                     try: await sts_msg.edit_text(status_text)
+                     except FloodWait as e: await asyncio.sleep(e.value)
+                     except MessageNotModified: pass
+                     except Exception as edit_e: logger.warning(f"Cleanup status edit error: {edit_e}")
+                     last_update_time = current_time
+            
+            # Clean up cursor
+            try: await loop.run_in_executor(None, cursor.close)
+            except: pass
+            
+            logger.info(f"Finished processing {db_name_log}. Checked: {checked_in_this_db}")
+
+        # After iterating all DBs
+        elapsed = get_readable_time(time_now() - start)
+        await sts_msg.edit_text(f"✔️ ᴄʀᴏꜱꜱ-ᴅʙ ᴄʟᴇᴀɴᴜᴘ ᴄᴏᴍᴘʟᴇᴛᴇ!\n\n⏱️ ᴛᴏᴏᴋ: <code>{elapsed}</code>\n\nꜱᴛᴀᴛꜱ:\n~ ᴛᴏᴛᴀʟ ᴄʜᴇᴄᴋᴇᴅ: <code>{total_checked}</code>\n~ ᴛᴏᴛᴀʟ ᴜɴɪQᴜᴇ ꜰɪʟᴇꜱ: <code>{len(master_file_ids)}</code>\n~ ᴛᴏᴛᴀʟ ᴅᴜᴘʟɪᴄᴀᴛᴇꜱ ʀᴇᴍᴏᴠᴇᴅ: <code>{total_removed}</code>\n~ ᴇʀʀᴏʀꜱ: <code>{total_errors}</code>")
+
+    except Exception as e:
+        logger.error(f"/cleanmultdb error: {e}", exc_info=True)
+        await sts_msg.edit(f"❌ ᴀɴ ᴇʀʀᴏʀ ᴏᴄᴄᴜʀʀᴇᴅ ᴅᴜʀɪɴɢ ᴄʟᴇᴀɴᴜᴘ: {e}")
+
 
 @Client.on_message(filters.command('set_fsub') & filters.user(ADMINS))
 async def set_fsub_cmd(bot, message):
