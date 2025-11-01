@@ -666,7 +666,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
         # Format sizes
         used_data_db_size = get_size(used_data_db_size_raw) if isinstance(used_data_db_size_raw, (int, float)) else used_data_db_size_raw
 
-        # Format files DB stats string
+    # Format files DB stats string
     db_stats_str = ""
     if isinstance(all_files_db_stats, list):
         for stat in all_files_db_stats:
@@ -679,24 +679,25 @@ async def cb_handler(client: Client, query: CallbackQuery):
         db_stats_str = "│ 🗂️ ꜰɪʟᴇ ᴅʙ ꜱᴛᴀᴛꜱ: <code>ᴇʀʀ</code>\n"
 
         
-        uptime = get_readable_time(time_now() - temp.START_TIME)
-        
-        # Format the final stats text
-        stats_text = script.STATUS_TXT.format(
-            users, 
-            chats, 
-            used_data_db_size, 
-            total_files, 
-            db_stats_str, 
-            uptime
-        )
-        # --- End Stats Fix ---
-        
-        buttons = [[ InlineKeyboardButton('« ʙᴀᴄᴋ', callback_data='about') ]]
-        try: await sts_msg.edit_media( media=InputMediaPhoto(random.choice(PICS), caption=stats_text), reply_markup=InlineKeyboardMarkup(buttons) )
-        except MessageNotModified: pass
-        except Exception as e: logger.error(f"Final stats edit error: {e}"); await sts_msg.edit(stats_text, reply_markup=InlineKeyboardMarkup(buttons))
-        return
+    uptime = get_readable_time(time_now() - temp.START_TIME)
+    
+    # Format the final stats text
+    stats_text = script.STATUS_TXT.format(
+        users, 
+        chats, 
+        used_data_db_size, 
+        total_files, 
+        db_stats_str, 
+        uptime
+    )
+    # --- End Stats Fix ---
+    
+    buttons = [[ InlineKeyboardButton('« ʙᴀᴄᴋ', callback_data='about') ]]
+    try: await sts_msg.edit_media( media=InputMediaPhoto(random.choice(PICS), caption=stats_text), reply_markup=InlineKeyboardMarkup(buttons) )
+    except MessageNotModified: pass
+    except Exception as e: logger.error(f"Final stats edit error: {e}"); await sts_msg.edit(stats_text, reply_markup=InlineKeyboardMarkup(buttons))
+    return
+
     elif data == "owner":
         buttons = [[InlineKeyboardButton('« ʙᴀᴄᴋ', callback_data='about')]]
         try:
@@ -921,7 +922,7 @@ async def auto_filter(client, msg, s, spoll=False):
 
 ♢ ᴅᴏᴜʙʟᴇ-ᴄʜᴇᴄᴋ ᴛʜᴇ ꜱᴘᴇʟʟɪɴɢ.
 ♢ ᴛʀʏ ᴜꜱɪɴɢ ᴍᴏʀᴇ ꜱᴘᴇᴄɪꜰɪᴄ ᴋᴇʏᴡᴏʀᴅꜱ.
-♢ ᴛʜᴇ ꜰɪʟᴇ ᴍɪɢʜᴛ ɴᴏᴛ ʙᴇ ʀᴇʟᴇᴀꜱᴇᴅ ᴏʀ ᴀᴅᴅᴇᴅ ʏᴇᴛ."""
+♢ ᴛʜᴇ ꜰɪʟᴇ ᴍɪɢʜᴛ ɴᴏᴛ ʙᴇ ʀᴇʟᴇᴀꜱᴇᴅ ᴏʀ ᴀᴅᴅᴇD ʏᴇᴛ."""
                  return await s.edit(not_found_text)
     else:
         settings = await get_settings(msg.message.chat.id)
