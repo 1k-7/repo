@@ -699,7 +699,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
             return
             # END OF INDENTED BLOCK
 
-        elif data == "owner": # <--- This is line 701
+    elif data == "owner": # <--- This is line 701
             buttons = [[InlineKeyboardButton('« ʙᴀᴄᴋ', callback_data='about')]]
             try:
                 owner_caption = script.MY_OWNER_TXT # Font from Script.py
