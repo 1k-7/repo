@@ -1,6 +1,6 @@
 from pymongo import MongoClient
 from info import (
-    BOT_ID, ADMINS, DATABASE_NAME, DATA_DATABASE_URL, # Removed FILES_DATABASE_URL, SECOND_FILES_DATABASE_URL
+    BOT_ID, ADMINS, DATABASE_NAME, DATA_DATABASE_URL, COLLECTION_NAME, # <--- ADDED COLLECTION_NAME HERE
     IMDB_TEMPLATE, WELCOME_TEXT, LINK_MODE,
     TUTORIAL, SHORTLINK_URL, SHORTLINK_API, SHORTLINK, FILE_CAPTION,
     IMDB, WELCOME, SPELL_CHECK, PROTECT_CONTENT, AUTO_DELETE, IS_STREAM,
@@ -274,7 +274,7 @@ class Database:
             
         for i, client in enumerate(file_db_clients):
             db_name = DATABASE_NAME
-            coll_name = COLLECTION_NAME
+            coll_name = COLLECTION_NAME # <--- THIS IS THE VARIABLE THAT WAS UNDEFINED
             try:
                 # Use the collection object's database name if available
                 if i < len(file_db_collections):
