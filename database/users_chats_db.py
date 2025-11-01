@@ -297,17 +297,17 @@ class Database:
                     # Get collStats
                     coll_stats = client[db_name].command("collStats", coll_name)
                     coll_count = coll_stats.get('count', 0)
-                    db_size = coll_stats.get('storageSize', 0) # Size of the collection
+                    db_size = coll_stats.get('storageSize', 0) # Use storageSize for quota
                 else:
                     # Fallback if collection list is somehow out of sync (shouldn't happen)
                     db_stats_fb = client[db_name].command("dbstats")
-                    db_size = db_stats_fb.get('dataSize', 0)
+                    db_size = db_stats_fb.get('storageSize', 0) # Use storageSize for quota
 
                 stats.append({
                     'name': f"DB #{i+1}",
                     'db_name': db_name,
                     'coll_name': coll_name,
-                    'size': db_size, # <--- Use collection size
+                    'size': db_size, # <--- This is now storageSize
                     'storage_size': coll_stats.get('storageSize', 0) if coll_stats else 0,
                     'collections': 1, # We are only checking one
                     'objects': coll_count, # Use coll_count
