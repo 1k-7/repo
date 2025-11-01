@@ -294,7 +294,6 @@ class Database:
                     db_name = coll.database.name
                     coll_name = coll.name
                     
-                    # Get collStats
                     coll_stats = client[db_name].command("collStats", coll_name)
                     coll_count = coll_stats.get('count', 0)
                     db_size = coll_stats.get('storageSize', 0) # Use storageSize for quota
