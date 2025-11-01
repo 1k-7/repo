@@ -667,15 +667,17 @@ async def cb_handler(client: Client, query: CallbackQuery):
         used_data_db_size = get_size(used_data_db_size_raw) if isinstance(used_data_db_size_raw, (int, float)) else used_data_db_size_raw
 
         # Format files DB stats string
-        db_stats_str = ""
-        if isinstance(all_files_db_stats, list):
-            for stat in all_files_db_stats:
-                if stat.get('error'):
-                    db_stats_str += f"│ 🗂️ {stat['name']}: <code>Error</code>\n"
-                else:
-                    db_stats_str += f"│ 🗂️ {stat['name']} ({stat.get('objects', 'N/A')}): <code>{get_size(stat['size'])}</code>\n"
-        else:
-            db_stats_str = "│ 🗂️ ꜰɪʟᴇ ᴅʙ ꜱᴛᴀᴛꜱ: <code>ᴇʀʀ</code>\n"
+    db_stats_str = ""
+    if isinstance(all_files_db_stats, list):
+        for stat in all_files_db_stats:
+            if stat.get('error'):
+                db_stats_str += f"│ 🗂️ {stat['name']}: <code>Error</code>\n"
+            else:
+                # Use the new 'coll_count' field, remove the redundant re-calculation
+                db_stats_str += f"│ 🗂️ {stat['name']} ({stat.get('coll_count', 'N/A')} ꜰɪʟᴇꜱ): <code>{get_size(stat['size'])}</code>\n"
+    else:
+        db_stats_str = "│ 🗂️ ꜰɪʟᴇ ᴅʙ ꜱᴛᴀᴛꜱ: <code>ᴇʀʀ</code>\n"
+
         
         uptime = get_readable_time(time_now() - temp.START_TIME)
         

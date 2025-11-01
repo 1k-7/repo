@@ -266,7 +266,7 @@ class Database:
     def get_all_chats(self):
         return self.grp.find({})
 
-    def get_all_files_db_stats(self):
+   def get_all_files_db_stats(self):
         """Gets stats for all connected file databases."""
         stats = []
         if not file_db_clients:
@@ -276,23 +276,34 @@ class Database:
             db_name = DATABASE_NAME
             coll_name = COLLECTION_NAME # <--- THIS IS THE VARIABLE THAT WAS UNDEFINED
             try:
+                coll_stats = None
+                coll_count = 0
+                db_size = 0
+                
                 # Use the collection object's database name if available
                 if i < len(file_db_collections):
                     coll = file_db_collections[i]
                     db_name = coll.database.name
                     coll_name = coll.name
+                    
+                    # Get collStats
+                    coll_stats = client[db_name].command("collStats", coll_name)
+                    coll_count = coll_stats.get('count', 0)
+                    db_size = coll_stats.get('size', 0) # Size of the collection
+                else:
+                    # Fallback if collection list is somehow out of sync (shouldn't happen)
+                    db_stats_fb = client[db_name].command("dbstats")
+                    db_size = db_stats_fb.get('dataSize', 0)
 
-                # Get dbStats for the specific database
-                db_stats = client[db_name].command("dbstats")
-                
                 stats.append({
                     'name': f"DB #{i+1}",
                     'db_name': db_name,
                     'coll_name': coll_name,
-                    'size': db_stats.get('dataSize', 0),
-                    'storage_size': db_stats.get('storageSize', 0),
-                    'collections': db_stats.get('collections', 0),
-                    'objects': db_stats.get('objects', 0) # Total objects in DB
+                    'size': db_size, # <--- Use collection size
+                    'storage_size': coll_stats.get('storageSize', 0) if coll_stats else 0,
+                    'collections': 1, # We are only checking one
+                    'objects': coll_count, # Use coll_count
+                    'coll_count': coll_count # <--- Use collection count
                 })
             except Exception as e:
                 logger.error(f"Error get_files_db_stats for DB #{i+1}: {e}")
@@ -301,6 +312,7 @@ class Database:
                     'db_name': db_name,
                     'coll_name': coll_name,
                     'size': 0,
+                    'coll_count': 0, # <--- Add default
                     'error': str(e)
                 })
         return stats

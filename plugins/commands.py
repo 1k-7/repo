@@ -479,6 +479,20 @@ async def clean_multi_db_duplicates(bot, message):
     total_errors = 0
     start = time_now()
 
+    # This MUST be a 'def', not 'async def', to run in the executor
+    def process_cursor_batch_sync(cursor, batch_size):
+        # This function runs in the executor
+        docs = []
+        try:
+            for _ in range(batch_size):
+                # cursor.next() is a blocking call, which is why we're in an executor
+                docs.append(cursor.next())
+        except StopIteration:
+            pass # End of cursor
+        except Exception as e:
+            logger.error(f"Error fetching batch from cursor: {e}")
+        return docs
+
     try:
         # Iterate through each DB, starting from the first
         for i, collection in enumerate(file_db_collections):
@@ -494,21 +508,9 @@ async def clean_multi_db_duplicates(bot, message):
 
             BATCH_SIZE = 5000 # Process IDs in batches
 
-            async def process_cursor_batch(cursor, batch_size):
-                # This function runs in the executor
-                docs = []
-                try:
-                    for _ in range(batch_size):
-                        docs.append(cursor.next())
-                except StopIteration:
-                    pass # End of cursor
-                except Exception as e:
-                    logger.error(f"Error fetching batch from cursor: {e}")
-                return docs
-
             while True:
                 # Get next batch of documents (sync call)
-                batch_docs = await loop.run_in_executor(None, partial(process_cursor_batch, cursor, BATCH_SIZE))
+                batch_docs = await loop.run_in_executor(None, partial(process_cursor_batch_sync, cursor, BATCH_SIZE))
                 if not batch_docs:
                     break # No more documents in this collection
 
@@ -549,9 +551,11 @@ async def clean_multi_db_duplicates(bot, message):
                      except Exception as edit_e: logger.warning(f"Cleanup status edit error: {edit_e}")
                      last_update_time = current_time
             
-            # Clean up cursor
-            try: await loop.run_in_executor(None, cursor.close)
-            except: pass
+            # Clean up cursor for this collection
+            try:
+                await loop.run_in_executor(None, cursor.close)
+            except Exception as e_close:
+                 logger.warning(f"Error closing cursor for {db_name_log}: {e_close}")
             
             logger.info(f"Finished processing {db_name_log}. Checked: {checked_in_this_db}")
 
