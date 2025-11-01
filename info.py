@@ -74,7 +74,7 @@ if len(DATA_DATABASE_URL) == 0:
     exit()
 
 # --- New Dynamic Files Database Setup ---
-DATABASE_URIS = environ.get('DATABASE_URIS', "mongodb+srv://aldrinrishi01:GTgduaENtVUk6VLt@norcluster.qsaqymo.mongodb.net/?retryWrites=true&w=majority&appName=norCluster mongodb+srv://lordemperean:dpiU0sq9yGR5PjWc@cluster0.gvgbd5e.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
+DATABASE_URIS = environ.get('DATABASE_URIS', "mongodb+srv://aldrinrishi01:GTgduaENtVUk6VLt@norcluster.qsaqymo.mongodb.net/?retryWrites=true&w=majority&appName=norCluster mongodb+srv://lordemperean:dpiU0sq9yGR5PjWc@cluster0.gvgbd5e.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0 mongodb+srv://norSearch3:5LAovtgK6Rp0DdJ3@cluster0.amkwtfi.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
 if len(DATABASE_URIS) == 0:
     logger.error('DATABASE_URIS is missing, exiting now. Please provide at least one MongoDB URL.')
     exit()
