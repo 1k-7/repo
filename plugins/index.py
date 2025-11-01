@@ -7,6 +7,7 @@ from hydrogram.errors import FloodWait, MessageNotModified, MessageTooLong # Add
 from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from info import ADMINS, INDEX_EXTENSIONS
 from database.ia_filterdb import save_file # Assuming save_file is now async
+from database.users_chats_db import db as data_db
 from utils import temp, get_readable_time
 import logging
 
@@ -229,7 +230,7 @@ async def index_files_to_db_iter(lst_msg_id, chat, msg, bot, skip):
                 if not any(file_name_lower.endswith("." + ext.lstrip('.')) for ext in INDEX_EXTENSIONS): index_stats["unsupported"] += 1; continue
 
                 media.caption = message.caption
-                save_tasks.append(save_file(media)) # Add save task
+                save_tasks.append(save_file(media, data_db)) # Add save task
 
                 # Process save tasks in batches using asyncio.gather
                 if len(save_tasks) >= SAVE_BATCH_SIZE:

@@ -70,7 +70,7 @@ except Exception as e:
 
 
 # --- NEW FUNCTION: get_active_collection_with_index ---
-async def get_active_collection_with_index():
+async def get_active_collection_with_index(data_db):
     """
     Finds the first database collection that is not full (under DB_MAX_SIZE_BYTES).
     Updates the 'CURRENT_DB_INDEX' setting if a new non-full DB is found.
@@ -137,11 +137,11 @@ def second_db_count_documents(): return 0
 
 
 # --- COMPLETELY REPLACED save_file FUNCTION ---
-async def save_file(media):
+async def save_file(media, data_db):
     """Saves file metadata to the 'active' database."""
     loop = asyncio.get_running_loop()
     
-    active_coll, active_index = await get_active_collection_with_index()
+    active_coll, active_index = await get_active_collection_with_index(data_db)
     if active_coll is None:
         logger.critical("All databases are full. Cannot save file.")
         return 'err'
