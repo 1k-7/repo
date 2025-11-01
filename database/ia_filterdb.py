@@ -75,9 +75,12 @@ async def save_file(media):
     loop = asyncio.get_running_loop()
     if collection is None: logger.error("Primary DB unavailable, cannot save file."); return 'err'
 
-    # Unpack file_id using the corrected function
-    file_id = unpack_new_file_id(media.file_id)
-    if not file_id: return 'err' # Error during unpacking
+    # Fix: Use the raw file_id string as the database _id.
+    # This removes the need for the faulty unpack_new_file_id function.
+    file_id = media.file_id
+    if not file_id:
+        logger.error("Received media with no file_id")
+        return 'err'
 
     # Clean file name
     raw_file_name = str(media.file_name) if media.file_name else "UnknownFile"
@@ -93,7 +96,7 @@ async def save_file(media):
     file_caption = re.sub(r'\s+', ' ', file_caption) # Condense multiple spaces
 
     document = {
-        '_id': file_id, # Use the unpacked file_id as the unique document ID
+        '_id': file_id, # Use the original string file_id as the unique document ID
         'file_name': file_name,
         'file_size': media.file_size or 0,
         'caption': file_caption
@@ -118,7 +121,8 @@ async def save_file(media):
     if second_collection is not None:
         try:
             # Check primary DB size (run synchronously in executor)
-            primary_db_stats = await loop.run_in_executor(None, client.admin.command, 'dbstats') # Use client, not db
+            # Use client.admin.command('dbStats') on the *client*, not the db object
+            primary_db_stats = await loop.run_in_executor(None, lambda: client.admin.command('dbStats', 1, db=DATABASE_NAME))
             current_size_bytes = primary_db_stats.get('dataSize', 0)
             size_limit_bytes = DB_CHANGE_LIMIT * 1024 * 1024
 
@@ -171,14 +175,17 @@ async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None):
     try: regex = re.compile(raw_pattern, flags=re.IGNORECASE)
     except re.error:
         logger.warning(f"Invalid regex pattern generated for query: '{query}'. Falling back to simple text search.")
-        regex = query # Fallback, might not work well with MongoDB text index
+        # Fallback to a simpler regex that might not be as good
+        simple_regex_pattern = r".*".join(words)
+        regex = re.compile(simple_regex_pattern, flags=re.IGNORECASE)
+
 
     # Define the base filter query
     filter_query = {'file_name': regex}
     if USE_CAPTION_FILTER: # Optionally search in captions too
         filter_query = {'$or': [{'file_name': regex}, {'caption': regex}]}
 
-    results = []; total_results = 0
+    results = []; total_results = 0; total_primary = 0; total_secondary = 0
 
     async def run_find(db_collection, q_filter, skip, limit):
         """Helper to run find and count in executor."""
@@ -195,20 +202,15 @@ async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None):
             logger.error(f"Database query error ({db_collection.name}): {e}"); return [], 0
 
     # Search primary database
-    primary_docs, primary_count = await run_find(collection, filter_query, offset, max_results)
+    primary_docs, primary_count = await run_find(collection, filter_query, 0, 1000) # Get more initially to check
     results.extend(primary_docs)
-    total_results += primary_count
+    total_primary = primary_count
 
-    # If secondary DB exists and we need more results
-    remaining_limit = max_results - len(primary_docs)
-    if second_collection is not None and remaining_limit > 0:
-        # Calculate offset for secondary DB
-        # If offset is within primary results, start secondary search from 0 relative to its own results
-        # If offset is beyond primary results, adjust secondary offset accordingly
-        secondary_offset = max(0, offset - primary_count) if primary_count > 0 and offset >= primary_count else 0
-        secondary_docs, secondary_count = await run_find(second_collection, filter_query, secondary_offset, remaining_limit)
+    # If secondary DB exists
+    if second_collection is not None:
+        secondary_docs, secondary_count = await run_find(second_collection, filter_query, 0, 1000) # Get more initially
         results.extend(secondary_docs)
-        total_results += secondary_count
+        total_secondary = secondary_count
 
     # Filter by language if specified (applied after combined results)
     if lang:
@@ -223,7 +225,9 @@ async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None):
         files_to_return = lang_files[offset : offset + max_results] # Python slicing handles offset/limit
     else:
         # If no language filter, just take the combined results up to max_results
-        files_to_return = results[:max_results]
+        files_to_return = results[offset : offset + max_results]
+        total_results = total_primary + total_secondary # Total is combined count
+
 
     # Calculate next offset for pagination
     current_page_count = len(files_to_return)
@@ -243,7 +247,10 @@ async def delete_files(query):
     words = [re.escape(word) for word in query.split()]
     raw_pattern = r'\b' + r'.*?\b'.join(words) + r'.*'
     try: regex = re.compile(raw_pattern, flags=re.IGNORECASE)
-    except re.error: regex = query # Fallback
+    except re.error:
+        simple_regex_pattern = r".*".join(words)
+        regex = re.compile(simple_regex_pattern, flags=re.IGNORECASE)
+
     filter_query = {'file_name': regex}
     # Could add caption filter here too if needed:
     # filter_query = {'$or': [{'file_name': regex}, {'caption': regex}]}
@@ -280,47 +287,4 @@ async def get_file_details(query_id):
     # Return as a list (consistent with old code) or empty list
     return [file_details] if file_details else []
 
-def encode_file_id(s: bytes) -> str:
-    """Encodes byte data into a URL-safe base64 string."""
-    r = b""; n = 0
-    for i in s + bytes([22]) + bytes([4]): # Append specific bytes used in older formats?
-        if i == 0: n += 1
-        else:
-            if n: r += b"\x00" + bytes([n]); n = 0 # Run-length encode consecutive zeros
-            r += bytes([i])
-    if n: r += b"\x00" + bytes([n]) # Handle trailing zeros
-    return base64.urlsafe_b64encode(r).decode().rstrip("=") # Base64 encode and remove padding
-
-def unpack_new_file_id(new_file_id):
-    """
-    Unpacks a Hydrogram file_id string into an older encoded format.
-    Handles the AttributeError by using enums.MessageMediaType.
-    """
-    try:
-        decoded = FileId.decode(new_file_id)
-
-        # --- Corrected File Type Mapping ---
-        # Use enums.MessageMediaType which exists in recent Hydrogram versions
-        file_type_map = {
-            enums.MessageMediaType.PHOTO: 0,
-            enums.MessageMediaType.AUDIO: 1,
-            enums.MessageMediaType.DOCUMENT: 2,
-            enums.MessageMediaType.VIDEO: 3,
-            enums.MessageMediaType.STICKER: 4,
-            enums.MessageMediaType.VOICE: 5,
-            enums.MessageMediaType.ANIMATION: 6,
-            enums.MessageMediaType.VIDEO_NOTE: 7,
-            # Add mappings for other types if needed, defaulting to DOCUMENT (2)
-        }
-        # Get the integer type, default to 2 (DOCUMENT) if type not in map
-        file_type = file_type_map.get(decoded.file_type, 2)
-        # --- End Correction ---
-
-        # Pack data into bytes (assuming little-endian format)
-        packed_data = pack("<iiqq", file_type, decoded.dc_id, decoded.media_id, decoded.access_hash)
-        # Encode the packed bytes
-        return encode_file_id(packed_data)
-    except Exception as e:
-        logger.error(f"Error unpacking file_id {new_file_id}: {e}", exc_info=True)
-        return None # Return None on any error during unpacking
-
+# Fix: Removed the unnecessary and buggy encode_file_id and unpack_new_file_id functions.

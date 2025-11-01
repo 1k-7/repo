@@ -97,21 +97,45 @@ class Bot(Client):
         await super().stop()
         logger.info("Bot Stopped!")
 
+    # Fix: Corrected iter_messages to properly iterate by ID range
     async def iter_messages(self: Client, chat_id: Union[int, str], limit: int, offset: int = 0) -> Optional[AsyncGenerator["types.Message", None]]:
-        current = offset
-        while True:
-            new_diff = min(200, limit - current)
-            if new_diff <= 0: return
+        """
+        Iterate through messages by ID range (forward).
+        offset = start_message_id
+        limit = end_message_id
+        """
+        current = offset # Start ID
+        end_id = limit   # End ID (exclusive, as range works)
+        
+        while current < end_id:
+            chunk_size = min(200, end_id - current)
+            if chunk_size <= 0:
+                return # We are done
+            
+            message_ids = list(range(current, current + chunk_size))
+            
             try:
-                 messages = await self.get_messages(chat_id, list(range(current, current + new_diff)))
-                 if not messages: return
-            except FloodWait as e: logger.warning(f"iter_messages FloodWait: sleep {e.value}s"); await asyncio.sleep(e.value); continue
-            except Exception as e: logger.error(f"iter_messages error ({chat_id}): {e}"); return
+                messages = await self.get_messages(chat_id, message_ids)
+                if not messages:
+                    # No messages found in this range (e.g., deleted), skip to next chunk
+                    current += chunk_size
+                    continue
+            except FloodWait as e:
+                logger.warning(f"iter_messages FloodWait: sleep {e.value}s"); 
+                await asyncio.sleep(e.value)
+                continue # Retry this same chunk
+            except Exception as e:
+                logger.error(f"iter_messages error ({chat_id}): {e}"); 
+                current += chunk_size # Skip this chunk on error
+                continue
 
             for message in messages:
-                if message is None: continue
+                if message is None:
+                    continue
                 yield message
-                current = message.id
+            
+            # Move to the next chunk
+            current += chunk_size
 
 def ping_loop():
     ping_interval = 180
