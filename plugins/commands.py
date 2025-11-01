@@ -485,7 +485,7 @@ async def topdown_cmd(bot, message):
         start = time_now()
         
         try:
-            active_coll, active_index = await get_active_collection_with_index()
+            active_coll, active_index = await get_active_collection_with_index(data_db)
             if active_coll is None:
                 return await sts_msg.edit("❌ ᴀʟʟ ᴅᴀᴛᴀʙᴀꜱᴇꜱ ᴀʀᴇ ꜰᴜʟʟ. ᴄᴀɴɴᴏᴛ ᴘᴇʀꜰᴏʀᴍ ᴛᴏᴘᴅᴏᴡɴ.")
             
