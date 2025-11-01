@@ -87,6 +87,7 @@ if len(DATABASE_URIS) == 0:
 
 DATABASE_NAME = environ.get('DATABASE_NAME', "Cluster0") # Shared DB name
 COLLECTION_NAME = environ.get('COLLECTION_NAME', 'Files') # Collection name for files
+DB_MAX_SIZE_MB = int(environ.get('DB_MAX_SIZE_MB', 460)) # 90% of 512MB free tier
 
 # Links
 SUPPORT_LINK = environ.get('SUPPORT_LINK', 'https://t.me/norFedSupport')

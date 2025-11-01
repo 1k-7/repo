@@ -25,6 +25,7 @@ class script(object):
 <blockquote>╭─[ ᴅᴀᴛᴀʙᴀꜱᴇ ꜱᴛᴀᴛꜱ ]────➣
 │ 🗳️ ʙᴏᴛ ᴅᴀᴛᴀ ꜱɪᴢᴇ: <code>{}</code>
 │ 💾 ᴛᴏᴛᴀʟ ꜰɪʟᴇꜱ (ᴀʟʟ ᴅʙꜱ): <code>{}</code>
+│ ⚡ ᴀᴄᴛɪᴠᴇ ᴅʙ ɪɴᴅᴇx: <code>{}</code>
 {}╰─────────────────────────➣</blockquote>
 <blockquote> ⏳ ʙᴏᴛ ᴜᴘᴛɪᴍᴇ: <code>{}</code> </blockquote>
 """ # Removed premium user count, added {} for dynamic DB stats
@@ -109,3 +110,4 @@ class script(object):
 ᴅᴇᴠᴇʟᴏᴘᴇʀ - @ActualHomie"""
 
     # Removed PLAN_TXT
+}

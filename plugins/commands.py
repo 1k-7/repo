@@ -9,7 +9,10 @@ from Script import script # Keep this for default texts if needed
 from hydrogram import Client, filters, enums
 from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 # Use the new get_total_files_count and import collections list
-from database.ia_filterdb import get_total_files_count, get_file_details, delete_files, file_db_collections
+from database.ia_filterdb import (
+    get_total_files_count, get_file_details, delete_files, 
+    file_db_collections, get_active_collection_with_index # <-- Import new items
+)
 from database.users_chats_db import db
 from datetime import datetime, timedelta, timezone # Keep datetime, add timezone
 import pytz # Keep pytz
@@ -25,6 +28,7 @@ from utils import (get_settings, get_size, is_subscribed, is_check_admin, get_sh
 from hydrogram.errors import MessageNotModified, FloodWait
 import logging
 from functools import partial # Import partial
+from pymongo.errors import BulkWriteError # <-- Import BulkWriteError
 
 logger = logging.getLogger(__name__)
 
@@ -272,7 +276,7 @@ async def link_cmd(bot, message):
     msg = message.reply_to_message
     if not msg: return await message.reply('⚠️ ᴘʟᴇᴀꜱᴇ ʀᴇᴘʟʏ ᴛᴏ ᴀ ᴍᴇᴅɪᴀ ꜰɪʟᴇ ᴛᴏ ɢᴇᴛ ꜱᴛʀᴇᴀᴍ/ᴅᴏᴡɴʟᴏᴀᴅ ʟɪɴᴋꜱ.')
     media = getattr(msg, msg.media.value, None) if msg.media else None
-    if not media or not hasattr(media, 'file_id'): return await message.reply('⚠️ ᴛʜɪꜱ ᴍᴇꜱꜱᴀGE ᴅᴏᴇꜱ ɴᴏᴛ ᴄᴏɴᴛᴀɪɴ ᴀ ꜱᴜᴘᴘᴏʀᴛᴇᴅ ᴍᴇᴅɪᴀ ꜰɪʟᴇ.')
+    if not media or not hasattr(media, 'file_id'): return await message.reply('⚠️ ᴛʜɪꜱ ᴍᴇꜱꜱGE ᴅᴏᴇꜱ ɴᴏᴛ ᴄᴏɴᴛᴀɪɴ ᴀ ꜱᴜᴘᴘᴏʀᴛᴇᴅ ᴍᴇᴅɪᴀ ꜰɪʟᴇ.')
     try:
         if not IS_STREAM: return await message.reply('🖥️ ꜱᴛʀᴇᴀᴍɪɴɢ ɪꜱ ᴄᴜʀʀᴇɴᴛʟʏ ᴅɪꜱᴀʙʟᴇᴅ.')
         try:
@@ -331,10 +335,15 @@ async def stats_cmd(bot, message):
             if stat.get('error'):
                 db_stats_str += f"│ 🗂️ {stat['name']}: <code>Error</code>\n"
             else:
-                # Show file count (objects) for this specific collection
                 # Use the 'coll_count' already retrieved from db.get_all_files_db_stats
                 db_file_count = stat.get('coll_count', 'N/A') 
                 db_stats_str += f"│ 🗂️ {stat['name']} ({db_file_count} ꜰɪʟᴇꜱ): <code>{get_size(stat['size'])}</code>\n"
+    else:
+        db_stats_str = "│ 🗂️ ꜰɪʟᴇ ᴅʙ ꜱᴛᴀᴛꜱ: <code>ᴇʀʀ</code>\n"
+
+    # Get active DB index
+    stg = await loop.run_in_executor(None, db.get_bot_sttgs) # Get settings
+    current_db_index = stg.get('CURRENT_DB_INDEX', 0) # Get the index
 
     # Get uptime
     uptime = get_readable_time(time_now() - temp.START_TIME)
@@ -344,8 +353,9 @@ async def stats_cmd(bot, message):
         users, 
         chats, 
         used_data_db_size, 
-        total_files, 
-        db_stats_str, 
+        total_files,
+        current_db_index + 1, # Pass the active DB index (1-based)
+        db_stats_str.rstrip('\n'), 
         uptime
     ))
 
@@ -459,6 +469,111 @@ async def ping_cmd(client, message):
     start = monotonic(); msg = await message.reply("👀 ᴘɪɴɢɪɴɢ..."); end = monotonic()
     await msg.edit(f'<b>ᴘᴏɴɢ!\n⏱️ {round((end - start) * 1000)} ᴍꜱ</b>')
 
+
+topdown_lock = asyncio.Lock() # Lock to prevent running /topdown twice
+
+@Client.on_message(filters.command('topdown') & filters.user(ADMINS))
+async def topdown_cmd(bot, message):
+    """Moves 10% of files from other DBs to the active DB."""
+    global topdown_lock
+    if topdown_lock.locked():
+        return await message.reply("⚠️ ᴀ ᴛᴏᴘᴅᴏᴡɴ ᴘʀᴏᴄᴇꜱꜱ ɪꜱ ᴀʟʀᴇᴀᴅʏ ʀᴜɴɴɪɴɢ.")
+    
+    async with topdown_lock:
+        sts_msg = await message.reply("⏳ ɪɴɪᴛɪᴀᴛɪɴɢ ᴛᴏᴘ-ᴅᴏᴡɴ ᴅᴀᴛᴀ ʙᴀʟᴀɴᴄᴇ...\nᴛʜɪꜱ ᴡɪʟʟ ᴛᴀᴋᴇ ᴀ ʟᴏɴɢ ᴛɪᴍᴇ.\n\nꜰɪɴᴅɪɴɢ ᴀᴄᴛɪᴠᴇ ᴅᴀᴛᴀʙᴀꜱᴇ...")
+        loop = asyncio.get_running_loop()
+        start = time_now()
+        
+        try:
+            active_coll, active_index = await get_active_collection_with_index()
+            if active_coll is None:
+                return await sts_msg.edit("❌ ᴀʟʟ ᴅᴀᴛᴀʙᴀꜱᴇꜱ ᴀʀᴇ ꜰᴜʟʟ. ᴄᴀɴɴᴏᴛ ᴘᴇʀꜰᴏʀᴍ ᴛᴏᴘᴅᴏᴡɴ.")
+            
+            active_db_name = f"DB #{active_index + 1}"
+            await sts_msg.edit(f"🎯 ᴀᴄᴛɪᴠᴇ ᴅᴀᴛᴀʙᴀꜱᴇ ꜰᴏᴜɴᴅ: **{active_db_name}**.\n\nꜱᴛᴀʀᴛɪɴɢ ᴛʀᴀɴꜱꜰᴇʀ...")
+            
+            source_collections = [(coll, i) for i, coll in enumerate(file_db_collections) if i != active_index]
+            
+            if not source_collections:
+                return await sts_msg.edit("ℹ️ ᴏɴʟʏ ᴏɴᴇ ᴅᴀᴛᴀʙᴀꜱᴇ ᴄᴏɴꜰɪɢᴜʀᴇᴅ. ɴᴏᴛʜɪɴɢ ᴛᴏ ᴛᴏᴘᴅᴏᴡɴ.")
+
+            total_moved = 0
+            total_failed_duplicates = 0
+            total_failed_other = 0
+
+            for source_coll, source_index in source_collections:
+                source_db_name = f"DB #{source_index + 1}"
+                await sts_msg.edit(f"⏳ ᴘʀᴏᴄᴇꜱꜱɪɴɢ {source_db_name}...\n~ ᴛᴏᴛᴀʟ ᴍᴏᴠᴇᴅ: {total_moved}\n~ ᴛᴏᴛᴀʟ ꜰᴀɪʟᴇᴅ: {total_failed_duplicates + total_failed_other}")
+                
+                try:
+                    coll_count = await loop.run_in_executor(None, partial(source_coll.count_documents, {}))
+                    limit = int(coll_count * 0.10) # 10%
+                    
+                    if limit == 0:
+                        logger.info(f"Skipping {source_db_name}, 10% is 0.")
+                        continue
+                    
+                    # Fetch the full documents to move
+                    docs_to_move = await loop.run_in_executor(None, list, source_coll.find().limit(limit))
+                    if not docs_to_move:
+                        logger.info(f"No documents found to move from {source_db_name}.")
+                        continue
+                    
+                    ids_to_move = [doc['_id'] for doc in docs_to_move]
+                    inserted_ids = []
+                    
+                    try:
+                        # Insert into active DB, skip duplicates (ordered=False)
+                        result = await loop.run_in_executor(None, partial(active_coll.insert_many, docs_to_move, ordered=False))
+                        inserted_ids = result.inserted_ids
+                        total_moved += len(inserted_ids)
+                        
+                    except BulkWriteError as bwe:
+                        # Some docs were inserted, some failed (likely duplicates)
+                        inserted_ids = [d['_id'] for d in bwe.details.get('inserted_ops', [])]
+                        total_moved += len(inserted_ids)
+                        
+                        dupe_errors = sum(1 for e in bwe.details.get('writeErrors', []) if e.get('code') == 11000)
+                        total_failed_duplicates += dupe_errors
+                        total_failed_other += len(bwe.details.get('writeErrors', [])) - dupe_errors
+                        
+                    except Exception as insert_e:
+                        logger.error(f"Error inserting batch from {source_db_name} to {active_db_name}: {insert_e}")
+                        total_failed_other += len(docs_to_move)
+                        continue # Skip deletion if insert failed badly
+
+                    # Delete *only* the successfully inserted documents from the source DB
+                    if inserted_ids:
+                        try:
+                            await loop.run_in_executor(None, partial(source_coll.delete_many, {'_id': {'$in': inserted_ids}}))
+                            logger.info(f"Moved {len(inserted_ids)} docs from {source_db_name} to {active_db_name}.")
+                        except Exception as del_e:
+                            logger.error(f"CRITICAL: Failed to delete moved docs from {source_db_name}! {del_e}")
+                            await sts_msg.edit(f"❌ ᴄʀɪᴛɪᴄᴀʟ ᴇʀʀᴏʀ!\nꜰᴀɪʟᴇᴅ ᴛᴏ ᴅᴇʟᴇᴛᴇ {len(inserted_ids)} ᴅᴏᴄꜱ ꜰʀᴏᴍ {source_db_name} ᴀꜰᴛᴇʀ ᴛʀᴀɴꜱꜰᴇʀ.\n\nᴘʟᴇᴀꜱᴇ ᴄʜᴇᴄᴋ ʟᴏɢꜱ. /cleanmultdb ɪꜱ ʀᴇᴄᴏᴍᴍᴇɴᴅᴇᴅ.")
+                            return # Stop immediately
+                    
+                except Exception as e:
+                    logger.error(f"Error processing {source_db_name} for topdown: {e}", exc_info=True)
+                    total_failed_other += limit # Estimate failure
+            
+            elapsed = get_readable_time(time_now() - start)
+            await sts_msg.edit(
+                f"✔️ ᴛᴏᴘ-ᴅᴏᴡɴ ᴄᴏᴍᴘʟᴇᴛᴇ!\n\n"
+                f"⏱️ ᴛᴏᴏᴋ: <code>{elapsed}</code>\n"
+                f"🎯 ᴛᴀʀɢᴇᴛ ᴅʙ: {active_db_name}\n\n"
+                f"~ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ᴍᴏᴠᴇᴅ: <code>{total_moved}</code> ꜰɪʟᴇꜱ\n"
+                f"~ ꜰᴀɪʟᴇᴅ (ᴅᴜᴘʟɪᴄᴀᴛᴇꜱ): <code>{total_failed_duplicates}</code>\n"
+                f"~ ꜰᴀɪʟᴇᴅ (ᴏᴛʜᴇʀ ᴇʀʀᴏʀꜱ): <code>{total_failed_other}</code>"
+            )
+            
+        except Exception as e:
+            logger.error(f"Fatal /topdown error: {e}", exc_info=True)
+            await sts_msg.edit(f"❌ ꜰᴀᴛᴀʟ ᴇʀʀᴏʀ ᴅᴜʀɪɴɢ ᴛᴏᴘᴅᴏᴡɴ: {e}")
+        finally:
+            if topdown_lock.locked():
+                topdown_lock.release()
+
+
 @Client.on_message(filters.command('cleanmultdb') & filters.user(ADMINS))
 async def clean_multi_db_duplicates(bot, message):
     if len(file_db_collections) < 2:
@@ -567,6 +682,9 @@ async def clean_multi_db_duplicates(bot, message):
     except Exception as e:
         logger.error(f"/cleanmultdb error: {e}", exc_info=True)
         await sts_msg.edit(f"❌ ᴀɴ ᴇʀʀᴏʀ ᴏᴄᴄᴜʀʀᴇᴅ ᴅᴜʀɪɴɢ ᴄʟᴇᴀɴᴜᴘ: {e}")
+    finally:
+        if topdown_lock.locked():
+            topdown_lock.release()
 
 
 @Client.on_message(filters.command('set_fsub') & filters.user(ADMINS))

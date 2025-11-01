@@ -7,11 +7,12 @@ from functools import partial
 from hydrogram.file_id import FileId
 from hydrogram import enums
 from pymongo import MongoClient, TEXT
-from pymongo.errors import DuplicateKeyError, OperationFailure
+from pymongo.errors import DuplicateKeyError, OperationFailure, BulkWriteError # Import BulkWriteError
 from info import (
     DATABASE_URIS, DATABASE_NAME, COLLECTION_NAME, # Use new DATABASE_URIS
-    USE_CAPTION_FILTER, MAX_BTN
+    USE_CAPTION_FILTER, MAX_BTN, DB_MAX_SIZE_MB # <-- Import DB_MAX_SIZE_MB
 )
+from .users_chats_db import db as data_db # <-- Import the data_db to get/set settings
 # from utils import get_size # <--- REMOVED THIS LINE TO FIX CIRCULAR IMPORT
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,7 @@ def get_size(size_bytes):
 # --- New Multi-DB Setup ---
 file_db_clients = []
 file_db_collections = []
+DB_MAX_SIZE_BYTES = DB_MAX_SIZE_MB * 1024 * 1024 # Convert MB to Bytes
 
 try:
     # Split the URIs string into a list
@@ -40,12 +42,9 @@ try:
             collection = db[COLLECTION_NAME]
             
             # Try to create index, but log error if it fails (e.g., DB full)
-            # Try to create index, but log error if it fails (e.g., DB full)
             try:
                 collection.create_index([("file_name", TEXT)], background=True)
-                # --- ADD THIS LINE ---
-                collection.create_index([("file_name", 1), ("file_size", 1)], background=True) 
-                
+                collection.create_index([("file_name", 1), ("file_size", 1)], unique=True, background=True) # Your unique index
             except OperationFailure as e:
                 if e.code == 8000: # AtlasError: "you are over your space quota"
                     logger.critical(f"Database #{i+1} is FULL! Couldn't create index: {e.details.get('errmsg', e)}")
@@ -70,6 +69,56 @@ except Exception as e:
 # --- End New Multi-DB Setup ---
 
 
+# --- NEW FUNCTION: get_active_collection_with_index ---
+async def get_active_collection_with_index():
+    """
+    Finds the first database collection that is not full (under DB_MAX_SIZE_BYTES).
+    Updates the 'CURRENT_DB_INDEX' setting if a new non-full DB is found.
+    Returns the collection and its index.
+    """
+    loop = asyncio.get_running_loop()
+    try:
+        stg = await loop.run_in_executor(None, data_db.get_bot_sttgs)
+        current_index = stg.get('CURRENT_DB_INDEX', 0)
+        
+        # Get stats for all DBs
+        db_stats = await loop.run_in_executor(None, data_db.get_all_files_db_stats)
+        
+        if not db_stats or len(db_stats) != len(file_db_collections):
+            logger.error("DB stats count mismatch or fetch error. Defaulting to first DB.")
+            return file_db_collections[0], 0
+
+        # Start checking from the last known active index
+        for i in range(current_index, len(file_db_collections)):
+            coll = file_db_collections[i]
+            stat = next((s for s in db_stats if s.get('coll_name') == coll.name and s.get('db_name') == coll.database.name), None)
+            
+            if stat and stat.get('size', 0) < DB_MAX_SIZE_BYTES:
+                if i != current_index:
+                    logger.info(f"DB #{current_index+1} is full. Switching active DB to #{i+1}.")
+                    await loop.run_in_executor(None, data_db.update_bot_sttgs, 'CURRENT_DB_INDEX', i)
+                return coll, i # Found our active DB
+
+        # If we looped and all are full, check from the beginning
+        if current_index > 0:
+            for i in range(0, current_index):
+                coll = file_db_collections[i]
+                stat = next((s for s in db_stats if s.get('coll_name') == coll.name and s.get('db_name') == coll.database.name), None)
+                
+                if stat and stat.get('size', 0) < DB_MAX_SIZE_BYTES:
+                    logger.info(f"All subsequent DBs full. Switching back to active DB #{i+1}.")
+                    await loop.run_in_executor(None, data_db.update_bot_sttgs, 'CURRENT_DB_INDEX', i)
+                    return coll, i
+
+        # If all DBs are full
+        logger.critical("All file databases are full!")
+        return None, -1
+
+    except Exception as e:
+        logger.error(f"Error getting active collection: {e}", exc_info=True)
+        return file_db_collections[0], 0 # Fallback to DB #1 on error
+
+
 def get_total_files_count():
      """Counts total documents across all file collections."""
      if not file_db_collections: return 0
@@ -87,12 +136,17 @@ db_count_documents = get_total_files_count
 def second_db_count_documents(): return 0
 
 
+# --- COMPLETELY REPLACED save_file FUNCTION ---
 async def save_file(media):
-    """Saves file metadata to the first available database."""
+    """Saves file metadata to the 'active' database."""
     loop = asyncio.get_running_loop()
-    if not file_db_collections:
-        logger.error("No file DBs available, cannot save file.")
+    
+    active_coll, active_index = await get_active_collection_with_index()
+    if active_coll is None:
+        logger.critical("All databases are full. Cannot save file.")
         return 'err'
+
+    db_name_log = f"Active DB #{active_index + 1}"
 
     file_id = media.file_id
     if not file_id:
@@ -118,67 +172,51 @@ async def save_file(media):
         'caption': file_caption
     }
 
-    # --- MODIFIED DUPLICATE CHECK ---
-    
-    # 1. Check for exact file_id (re-index check) across ALL databases
-    try:
-        id_query_filter = {'_id': file_id}
-        id_find_tasks = [
-            loop.run_in_executor(None, partial(collection.find_one, id_query_filter, {'_id': 1}))
-            for collection in file_db_collections
-        ]
-        id_duplicates = await asyncio.gather(*id_find_tasks)
-        if any(id_duplicates):
-            logger.debug(f'[Duplicate] File already in DB (by ID): {file_name}')
-            return 'dup'
-    except Exception as e:
-        logger.error(f"Duplicate ID check failed for {file_id}: {e}. Proceeding...")
+    # --- Duplicate Check ---
+    # Check for duplicates in ALL OTHER databases
+    collections_to_check = [coll for i, coll in enumerate(file_db_collections) if i != active_index]
 
-    # 2. If no ID match, check for (file_name, file_size) (re-upload check)
-    try:
-        fn_query_filter = {'file_name': document['file_name'], 'file_size': document['file_size']}
-        fn_find_tasks = [
-            loop.run_in_executor(None, partial(collection.find_one, fn_query_filter, {'_id': 1}))
-            for collection in file_db_collections
-        ]
-        fn_duplicates = await asyncio.gather(*fn_find_tasks)
-        if any(fn_duplicates):
-            logger.debug(f'[Duplicate] File already in DB (by name+size): {file_name}')
-            return 'dup'
-    except Exception as e:
-        logger.error(f"Duplicate name+size check failed for {file_name}: {e}. Proceeding...")
-    # --- END MODIFICATION ---
-
-
-    # Try to insert into the first available (non-full) database
-    for i, collection in enumerate(file_db_collections):
-        db_name_log = f"DB #{i+1}"
+    if collections_to_check:
         try:
-            await loop.run_in_executor(None, partial(collection.insert_one, document))
-            logger.info(f'Saved [{get_size(document["file_size"])}] to {db_name_log}: {file_name}')
-            return 'suc' # Success!
-        except DuplicateKeyError:
-            logger.warning(f'Duplicate Key error on insert ({db_name_log}): {file_name}')
-            return 'dup' # Should have been caught by the check above, but as a failsafe
-        except OperationFailure as e:
-             # Error code 8000 is "AtlasError" for "over space quota"
-             if e.code == 8000:
-                 logger.warning(f"{db_name_log} is FULL. Trying next DB... (Error: {e.details.get('errmsg', e)})")
-                 continue # Try the next database in the list
-             else:
-                 logger.error(f"MongoDB Operation Failure on {db_name_log}: {e}")
-                 return 'err' # Return error for other operation failures
+            query_filter = {
+                '$or': [
+                    {'_id': document['_id']},
+                    {'file_name': document['file_name'], 'file_size': document['file_size']}
+                ]
+            }
+            find_tasks = [
+                loop.run_in_executor(None, partial(coll.find_one, query_filter, {'_id': 1}))
+                for coll in collections_to_check
+            ]
+            duplicates = await asyncio.gather(*find_tasks)
+            
+            if any(duplicates):
+                logger.debug(f'[Duplicate] File found in another DB. Skipping insert into {db_name_log} for: {document["file_name"]}')
+                return 'dup'
         except Exception as e:
-            logger.error(f"Unexpected error saving file to {db_name_log}: {e}", exc_info=True)
-            return 'err' # Return error for other exceptions
+            logger.error(f"Error checking other DBs for duplicates: {e}")
+            # Don't error out, still try to insert. The active DB's own index will catch it.
     
-    # If loop finishes, all databases are full or failed
-    logger.critical(f"All {len(file_db_collections)} databases are full or failed. Cannot save file: {file_name}")
-    return 'err' # Return error for other exceptions
+    # --- Try to insert ---
+    try:
+        await loop.run_in_executor(None, partial(active_coll.insert_one, document))
+        logger.info(f'Saved [{get_size(document["file_size"])}] to {db_name_log}: {document["file_name"]}')
+        return 'suc' # Success!
     
-    # If loop finishes, all databases are full or failed
-    logger.critical(f"All {len(file_db_collections)} databases are full or failed. Cannot save file: {file_name}")
-    return 'err'
+    except DuplicateKeyError:
+        logger.warning(f'[Duplicate] File already in {db_name_log} (by ID or name+size): {document["file_name"]}')
+        return 'dup'
+    
+    except OperationFailure as e:
+         if e.code == 8000: # "over space quota"
+             logger.warning(f"{db_name_log} is FULL. File *not* saved. Active DB will switch on next save. (Error: {e.details.get('errmsg', e)})")
+             return 'err' # Return error, bot will find new active DB on next call
+         else:
+             logger.error(f"MongoDB Operation Failure on {db_name_log}: {e}")
+             return 'err'
+    except Exception as e:
+        logger.error(f"Unexpected error saving file to {db_name_log}: {e}", exc_info=True)
+        return 'err'
 
 
 async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None):

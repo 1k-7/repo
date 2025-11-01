@@ -29,6 +29,14 @@ except Exception as e:
 
 # The file DB connections are already handled in ia_filterdb
 
+# --- LOCAL GET_SIZE TO AVOID CIRCULAR IMPORT ---
+def get_size(size_bytes):
+    if size_bytes is None or not isinstance(size_bytes, (int, float)) or size_bytes < 0: return "0 B"
+    size = float(size_bytes); units = ["B", "KB", "MB", "GB", "TB", "PB", "EB"]; i = 0
+    while size >= 1024.0 and i < len(units) - 1: i += 1; size /= 1024.0
+    return "%.2f %s" % (size, units[i])
+# --- END LOCAL GET_SIZE ---
+
 
 class Database:
     # Default settings for groups
@@ -361,6 +369,7 @@ class Database:
         default_bot_settings = {
              'FORCE_SUB_CHANNELS': '', 'REQUEST_FORCE_SUB_CHANNELS': None,
              'AUTO_FILTER': True, 'PM_SEARCH': True,
+             'CURRENT_DB_INDEX': 0, # Add the default active DB index
              # Add any other bot-specific defaults here
         }
         if settings:
