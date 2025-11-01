@@ -40,8 +40,12 @@ try:
             collection = db[COLLECTION_NAME]
             
             # Try to create index, but log error if it fails (e.g., DB full)
+            # Try to create index, but log error if it fails (e.g., DB full)
             try:
                 collection.create_index([("file_name", TEXT)], background=True)
+                # --- ADD THIS LINE ---
+                collection.create_index([("file_name", 1), ("file_size", 1)], background=True) 
+                
             except OperationFailure as e:
                 if e.code == 8000: # AtlasError: "you are over your space quota"
                     logger.critical(f"Database #{i+1} is FULL! Couldn't create index: {e.details.get('errmsg', e)}")
