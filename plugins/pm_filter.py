@@ -636,26 +636,26 @@ async def cb_handler(client: Client, query: CallbackQuery):
         return
 
     elif data == "stats":
-        if query.from_user.id not in ADMINS: return await query.answer("ᴀᴅᴍɪɴꜱ ᴏɴʟʏ!", show_alert=True)
-        sts_msg = None
-        try: sts_msg = await query.message.edit_media( media=InputMediaPhoto(random.choice(PICS), caption="ɢᴀᴛʜᴇʀɪɴɢ ꜱᴛᴀᴛꜱ..."), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('⏳', callback_data='buttons')]]))
-        except Exception:
-             try: sts_msg = await query.message.edit(" ɢᴀᴛʜᴇʀɪɴɢ ꜱᴛᴀᴛꜱ...")
-             except: return await query.answer("ᴇʀʀᴏʀ ɪɴɪᴛɪᴀᴛɪɴɢ ꜱᴛᴀᴛꜱ.", show_alert=True)
-        
-        async def get_stat_safe(func, *args):
-            try: call_func = partial(func, *args) if args else func; return await loop.run_in_executor(None, call_func)
-            except Exception as e: logger.error(f"Stat error {func.__name__ if hasattr(func, '__name__') else 'unknown'}: {e}"); return "ᴇʀʀ"
-        
-        # --- Start Stats Fix ---
-        # Fetch stats concurrently
-        total_files_task = get_stat_safe(get_total_files_count)
-        users_task = get_stat_safe(db.total_users_count)
-        chats_task = get_stat_safe(db.total_chat_count)
-        data_db_size_task = get_stat_safe(db.get_data_db_size)
-        all_files_db_stats_task = get_stat_safe(db.get_all_files_db_stats)
+            if query.from_user.id not in ADMINS: return await query.answer("ᴀᴅᴍɪɴꜱ ᴏɴʟʏ!", show_alert=True)
+            sts_msg = None
+            try: sts_msg = await query.message.edit_media( media=InputMediaPhoto(random.choice(PICS), caption="ɢᴀᴛʜᴇʀɪɴɢ ꜱᴛᴀᴛꜱ..."), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('⏳', callback_data='buttons')]]))
+            except Exception:
+                 try: sts_msg = await query.message.edit(" ɢᴀᴛʜᴇʀɪɴɢ ꜱᴛᴀᴛꜱ...")
+                 except: return await query.answer("ᴇʀʀᴏʀ ɪɴɪᴛɪᴀᴛɪɴɢ ꜱᴛᴀᴛꜱ.", show_alert=True)
+            
+            async def get_stat_safe(func, *args):
+                try: call_func = partial(func, *args) if args else func; return await loop.run_in_executor(None, call_func)
+                except Exception as e: logger.error(f"Stat error {func.__name__ if hasattr(func, '__name__') else 'unknown'}: {e}"); return "ᴇʀʀ"
+            
+            # --- Start Stats Fix ---
+            # Fetch stats concurrently
+            total_files_task = get_stat_safe(get_total_files_count)
+            users_task = get_stat_safe(db.total_users_count)
+            chats_task = get_stat_safe(db.total_chat_count)
+            data_db_size_task = get_stat_safe(db.get_data_db_size)
+            all_files_db_stats_task = get_stat_safe(db.get_all_files_db_stats)
 
-        total_files, users, chats, used_data_db_size_raw, all_files_db_stats = await asyncio.gather(
+            total_files, users, chats, used_data_db_size_raw, all_files_db_stats = await asyncio.gather(
                 total_files_task,
                 users_task,
                 chats_task,
@@ -663,10 +663,10 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 all_files_db_stats_task
             )
             
-            # Format sizes
+            # FIX: THIS ENTIRE BLOCK (starting here) MUST BE INDENTED
             used_data_db_size = get_size(used_data_db_size_raw) if isinstance(used_data_db_size_raw, (int, float)) else used_data_db_size_raw
 
-            # Format files DB stats string  <--- FIX: THIS BLOCK MUST BE INDENTED
+            # Format files DB stats string
             db_stats_str = ""
             if isinstance(all_files_db_stats, list):
                 for stat in all_files_db_stats:
@@ -697,6 +697,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
             except MessageNotModified: pass
             except Exception as e: logger.error(f"Final stats edit error: {e}"); await sts_msg.edit(stats_text, reply_markup=InlineKeyboardMarkup(buttons))
             return
+            # END OF INDENTED BLOCK
 
         elif data == "owner": # <--- This is line 701
             buttons = [[InlineKeyboardButton('« ʙᴀᴄᴋ', callback_data='about')]]
