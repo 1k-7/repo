@@ -656,52 +656,52 @@ async def cb_handler(client: Client, query: CallbackQuery):
         all_files_db_stats_task = get_stat_safe(db.get_all_files_db_stats)
 
         total_files, users, chats, used_data_db_size_raw, all_files_db_stats = await asyncio.gather(
-            total_files_task,
-            users_task,
-            chats_task,
-            data_db_size_task,
-            all_files_db_stats_task
-        )
-        
-        # Format sizes
-        used_data_db_size = get_size(used_data_db_size_raw) if isinstance(used_data_db_size_raw, (int, float)) else used_data_db_size_raw
+                total_files_task,
+                users_task,
+                chats_task,
+                data_db_size_task,
+                all_files_db_stats_task
+            )
+            
+            # Format sizes
+            used_data_db_size = get_size(used_data_db_size_raw) if isinstance(used_data_db_size_raw, (int, float)) else used_data_db_size_raw
 
-    # Format files DB stats string
-    db_stats_str = ""
-    if isinstance(all_files_db_stats, list):
-        for stat in all_files_db_stats:
-            if stat.get('error'):
-                db_stats_str += f"│ 🗂️ {stat['name']}: <code>Error</code>\n"
+            # Format files DB stats string  <--- FIX: THIS BLOCK MUST BE INDENTED
+            db_stats_str = ""
+            if isinstance(all_files_db_stats, list):
+                for stat in all_files_db_stats:
+                    if stat.get('error'):
+                        db_stats_str += f"│ 🗂️ {stat['name']}: <code>Error</code>\n"
+                    else:
+                        # Use the new 'coll_count' field, remove the redundant re-calculation
+                        db_stats_str += f"│ 🗂️ {stat['name']} ({stat.get('coll_count', 'N/A')} ꜰɪʟᴇꜱ): <code>{get_size(stat['size'])}</code>\n"
             else:
-                # Use the new 'coll_count' field, remove the redundant re-calculation
-                db_stats_str += f"│ 🗂️ {stat['name']} ({stat.get('coll_count', 'N/A')} ꜰɪʟᴇꜱ): <code>{get_size(stat['size'])}</code>\n"
-    else:
-        db_stats_str = "│ 🗂️ ꜰɪʟᴇ ᴅʙ ꜱᴛᴀᴛꜱ: <code>ᴇʀʀ</code>\n"
+                db_stats_str = "│ 🗂️ ꜰɪʟᴇ ᴅʙ ꜱᴛᴀᴛꜱ: <code>ᴇʀʀ</code>\n"
 
-        
-    uptime = get_readable_time(time_now() - temp.START_TIME)
-    
-    # Format the final stats text
-    stats_text = script.STATUS_TXT.format(
-        users, 
-        chats, 
-        used_data_db_size, 
-        total_files, 
-        db_stats_str, 
-        uptime
-    )
-    # --- End Stats Fix ---
-    
-    buttons = [[ InlineKeyboardButton('« ʙᴀᴄᴋ', callback_data='about') ]]
-    try: await sts_msg.edit_media( media=InputMediaPhoto(random.choice(PICS), caption=stats_text), reply_markup=InlineKeyboardMarkup(buttons) )
-    except MessageNotModified: pass
-    except Exception as e: logger.error(f"Final stats edit error: {e}"); await sts_msg.edit(stats_text, reply_markup=InlineKeyboardMarkup(buttons))
-    return
+                
+            uptime = get_readable_time(time_now() - temp.START_TIME)
+            
+            # Format the final stats text
+            stats_text = script.STATUS_TXT.format(
+                users, 
+                chats, 
+                used_data_db_size, 
+                total_files, 
+                db_stats_str, 
+                uptime
+            )
+            # --- End Stats Fix ---
+            
+            buttons = [[ InlineKeyboardButton('« ʙᴀᴄᴋ', callback_data='about') ]]
+            try: await sts_msg.edit_media( media=InputMediaPhoto(random.choice(PICS), caption=stats_text), reply_markup=InlineKeyboardMarkup(buttons) )
+            except MessageNotModified: pass
+            except Exception as e: logger.error(f"Final stats edit error: {e}"); await sts_msg.edit(stats_text, reply_markup=InlineKeyboardMarkup(buttons))
+            return
 
-    elif data == "owner":
-        buttons = [[InlineKeyboardButton('« ʙᴀᴄᴋ', callback_data='about')]]
-        try:
-            owner_caption = script.MY_OWNER_TXT # Font from Script.py
+        elif data == "owner": # <--- This is line 701
+            buttons = [[InlineKeyboardButton('« ʙᴀᴄᴋ', callback_data='about')]]
+            try:
+                owner_caption = script.MY_OWNER_TXT # Font from Script.py
             await query.edit_message_media(InputMediaPhoto(random.choice(PICS), caption=owner_caption), reply_markup=InlineKeyboardMarkup(buttons))
         except MessageNotModified: pass
         except Exception as e: logger.error(f"Owner CB Error: {e}")
