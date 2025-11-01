@@ -697,7 +697,6 @@ async def cb_handler(client: Client, query: CallbackQuery):
         except MessageNotModified: pass
         except Exception as e: logger.error(f"Final stats edit error: {e}"); await sts_msg.edit(stats_text, reply_markup=InlineKeyboardMarkup(buttons))
         return
-
     elif data == "owner":
         buttons = [[InlineKeyboardButton('« ʙᴀᴄᴋ', callback_data='about')]]
         try:
