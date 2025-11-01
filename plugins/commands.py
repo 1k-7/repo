@@ -472,25 +472,42 @@ async def ping_cmd(client, message):
 
 topdown_lock = asyncio.Lock() # Lock to prevent running /topdown twice
 
+# --- FIXED /topdown COMMAND ---
 @Client.on_message(filters.command('topdown') & filters.user(ADMINS))
 async def topdown_cmd(bot, message):
-    """Moves 10% of files from other DBs to the active DB."""
+    """Moves files from other DBs to the active DB in small batches."""
     global topdown_lock
     if topdown_lock.locked():
         return await message.reply("⚠️ ᴀ ᴛᴏᴘᴅᴏᴡɴ ᴘʀᴏᴄᴇꜱꜱ ɪꜱ ᴀʟʀᴇᴀᴅʏ ʀᴜɴɴɪɴɢ.")
     
     async with topdown_lock:
-        sts_msg = await message.reply("⏳ ɪɴɪᴛɪᴀᴛɪɴɢ ᴛᴏᴘ-ᴅᴏᴡɴ ᴅᴀᴛᴀ ʙᴀʟᴀɴᴄᴇ...\nᴛʜɪꜱ ᴡɪʟʟ ᴛᴀᴋᴇ ᴀ ʟᴏɴɢ ᴛɪᴍᴇ.\n\nꜰɪɴᴅɪɴɢ ᴀᴄᴛɪᴠᴇ ᴅᴀᴛᴀʙᴀꜱᴇ...")
+        sts_msg = await message.reply("⏳ ɪɴɪᴛɪᴀᴛɪɴɢ ᴍᴇᴍᴏʀʏ-ᴇꜰꜰɪᴄɪᴇɴᴛ ᴛᴏᴘ-ᴅᴏᴡɴ ʙᴀʟᴀɴᴄᴇ...\n\nꜰɪɴᴅɪɴɢ ᴀᴄᴛɪᴠᴇ ᴅᴀᴛᴀʙᴀꜱᴇ...")
         loop = asyncio.get_running_loop()
         start = time_now()
-        
+        last_update_time = time_now()
+        BATCH_SIZE = 2000 # Process 2000 documents at a time
+
+        # This MUST be a 'def', not 'async def', to run in the executor
+        def get_batch_docs_sync(cursor, batch_size):
+            # This function runs in the executor
+            docs = []
+            try:
+                for _ in range(batch_size):
+                    # cursor.next() is a blocking call
+                    docs.append(cursor.next()) # Get the full document
+            except StopIteration:
+                pass # End of cursor
+            except Exception as e:
+                logger.error(f"Error fetching document batch from cursor: {e}")
+            return docs
+
         try:
             active_coll, active_index = await get_active_collection_with_index(db)
             if active_coll is None:
                 return await sts_msg.edit("❌ ᴀʟʟ ᴅᴀᴛᴀʙᴀꜱᴇꜱ ᴀʀᴇ ꜰᴜʟʟ. ᴄᴀɴɴᴏᴛ ᴘᴇʀꜰᴏʀᴍ ᴛᴏᴘᴅᴏᴡɴ.")
             
             active_db_name = f"DB #{active_index + 1}"
-            await sts_msg.edit(f"🎯 ᴀᴄᴛɪᴠᴇ ᴅᴀᴛᴀʙᴀꜱᴇ ꜰᴏᴜɴᴅ: **{active_db_name}**.\n\nꜱᴛᴀʀᴛɪɴɢ ᴛʀᴀɴꜱꜰᴇʀ...")
+            await sts_msg.edit(f"🎯 ᴀᴄᴛɪᴠᴇ ᴅᴀᴛᴀʙᴀꜱᴇ ꜰᴏᴜɴᴅ: **{active_db_name}**.\n\nꜱᴛᴀʀᴛɪɴɢ ᴛʀᴀɴꜱꜰᴇʀ ɪɴ ʙᴀᴛᴄʜᴇꜱ ᴏꜰ {BATCH_SIZE}...")
             
             source_collections = [(coll, i) for i, coll in enumerate(file_db_collections) if i != active_index]
             
@@ -503,59 +520,91 @@ async def topdown_cmd(bot, message):
 
             for source_coll, source_index in source_collections:
                 source_db_name = f"DB #{source_index + 1}"
-                await sts_msg.edit(f"⏳ ᴘʀᴏᴄᴇꜱꜱɪɴɢ {source_db_name}...\n~ ᴛᴏᴛᴀʟ ᴍᴏᴠᴇᴅ: {total_moved}\n~ ᴛᴏᴛᴀʟ ꜰᴀɪʟᴇᴅ: {total_failed_duplicates + total_failed_other}")
-                
+                logger.info(f"Processing source: {source_db_name}")
+
                 try:
-                    coll_count = await loop.run_in_executor(None, partial(source_coll.count_documents, {}))
-                    limit = int(coll_count * 0.10) # 10%
-                    
-                    if limit == 0:
-                        logger.info(f"Skipping {source_db_name}, 10% is 0.")
-                        continue
-                    
-                    # Fetch the full documents to move
-                    docs_to_move = await loop.run_in_executor(None, list, source_coll.find().limit(limit))
+                    # Create cursor in executor
+                    source_cursor = await loop.run_in_executor(None, partial(source_coll.find, {}))
+                except Exception as e:
+                    logger.error(f"Failed to create cursor for {source_db_name}: {e}")
+                    total_failed_other += 1 # Mark a generic error for this DB
+                    continue # Skip this source DB
+
+                while True:
+                    # 1. Get a batch of full documents
+                    docs_to_move = await loop.run_in_executor(None, partial(get_batch_docs_sync, source_cursor, BATCH_SIZE))
                     if not docs_to_move:
-                        logger.info(f"No documents found to move from {source_db_name}.")
-                        continue
+                        logger.info(f"Finished processing {source_db_name}.")
+                        break # No more documents in this source collection
                     
-                    ids_to_move = [doc['_id'] for doc in docs_to_move]
                     inserted_ids = []
                     
+                    # 2. Try to insert the batch into the active DB
                     try:
-                        # Insert into active DB, skip duplicates (ordered=False)
                         result = await loop.run_in_executor(None, partial(active_coll.insert_many, docs_to_move, ordered=False))
                         inserted_ids = result.inserted_ids
                         total_moved += len(inserted_ids)
                         
                     except BulkWriteError as bwe:
-                        # Some docs were inserted, some failed (likely duplicates)
+                        # Handle partial success and duplicates
                         inserted_ids = [d['_id'] for d in bwe.details.get('inserted_ops', [])]
                         total_moved += len(inserted_ids)
                         
                         dupe_errors = sum(1 for e in bwe.details.get('writeErrors', []) if e.get('code') == 11000)
                         total_failed_duplicates += dupe_errors
-                        total_failed_other += len(bwe.details.get('writeErrors', [])) - dupe_errors
+                        
+                        other_errors = len(bwe.details.get('writeErrors', [])) - dupe_errors
+                        total_failed_other += other_errors
+                        
+                        if any(e.get('code') == 8000 for e in bwe.details.get('writeErrors', [])):
+                             logger.critical(f"Active DB {active_db_name} is FULL! Aborting topdown.")
+                             await sts_msg.edit(f"❌ ᴀᴄᴛɪᴠᴇ ᴅʙ {active_db_name} ɪꜱ ꜰᴜʟʟ! ᴀʙᴏʀᴛɪɴɢ ᴛʀᴀɴꜱꜰᴇʀ.")
+                             # Clean up cursor and release lock
+                             try: await loop.run_in_executor(None, source_cursor.close)
+                             except: pass
+                             return # Stop the entire function
                         
                     except Exception as insert_e:
                         logger.error(f"Error inserting batch from {source_db_name} to {active_db_name}: {insert_e}")
                         total_failed_other += len(docs_to_move)
-                        continue # Skip deletion if insert failed badly
+                        continue # Skip deletion for this batch
 
-                    # Delete *only* the successfully inserted documents from the source DB
+                    # 3. Delete *only* successfully inserted documents from the source DB
                     if inserted_ids:
                         try:
                             await loop.run_in_executor(None, partial(source_coll.delete_many, {'_id': {'$in': inserted_ids}}))
-                            logger.info(f"Moved {len(inserted_ids)} docs from {source_db_name} to {active_db_name}.")
                         except Exception as del_e:
-                            logger.error(f"CRITICAL: Failed to delete moved docs from {source_db_name}! {del_e}")
+                            logger.error(f"CRITICAL: Failed to delete {len(inserted_ids)} moved docs from {source_db_name}! {del_e}")
                             await sts_msg.edit(f"❌ ᴄʀɪᴛɪᴄᴀʟ ᴇʀʀᴏʀ!\nꜰᴀɪʟᴇᴅ ᴛᴏ ᴅᴇʟᴇᴛᴇ {len(inserted_ids)} ᴅᴏᴄꜱ ꜰʀᴏᴍ {source_db_name} ᴀꜰᴛᴇʀ ᴛʀᴀɴꜱꜰᴇʀ.\n\nᴘʟᴇᴀꜱᴇ ᴄʜᴇᴄᴋ ʟᴏɢꜱ. /cleanmultdb ɪꜱ ʀᴇᴄᴏᴍᴍᴇɴᴅᴇᴅ.")
+                            # Clean up cursor and release lock
+                            try: await loop.run_in_executor(None, source_cursor.close)
+                            except: pass
                             return # Stop immediately
                     
-                except Exception as e:
-                    logger.error(f"Error processing {source_db_name} for topdown: {e}", exc_info=True)
-                    total_failed_other += limit # Estimate failure
-            
+                    # 4. Update status message periodically
+                    current_time = time_now()
+                    if current_time - last_update_time > 15: # Update every 15 seconds
+                        elapsed = get_readable_time(current_time - start)
+                        status_text = (
+                            f"⏳ ᴘʀᴏᴄᴇꜱꜱɪɴɢ <code>{source_db_name}</code>...\n"
+                            f"~ ᴍᴏᴠᴇᴅ: <code>{total_moved}</code>\n"
+                            f"~ ᴅᴜᴘʟɪᴄᴀᴛᴇꜱ: <code>{total_failed_duplicates}</code>\n"
+                            f"~ ᴇʀʀᴏʀꜱ: <code>{total_failed_other}</code>\n"
+                            f"~ ᴇʟᴀᴘꜱᴇᴅ: <code>{elapsed}</code>"
+                        )
+                        try: await sts_msg.edit_text(status_text)
+                        except FloodWait as e: await asyncio.sleep(e.value)
+                        except MessageNotModified: pass
+                        except Exception as edit_e: logger.warning(f"Topdown status edit error: {edit_e}")
+                        last_update_time = current_time
+
+                # Clean up cursor for this source collection
+                try:
+                    await loop.run_in_executor(None, source_cursor.close)
+                except Exception as e_close:
+                    logger.warning(f"Error closing cursor for {source_db_name}: {e_close}")
+
+            # After all source collections are processed
             elapsed = get_readable_time(time_now() - start)
             await sts_msg.edit(
                 f"✔️ ᴛᴏᴘ-ᴅᴏᴡɴ ᴄᴏᴍᴘʟᴇᴛᴇ!\n\n"
@@ -569,10 +618,9 @@ async def topdown_cmd(bot, message):
         except Exception as e:
             logger.error(f"Fatal /topdown error: {e}", exc_info=True)
             await sts_msg.edit(f"❌ ꜰᴀᴛᴀʟ ᴇʀʀᴏʀ ᴅᴜʀɪɴɢ ᴛᴏᴘᴅᴏᴡɴ: {e}")
-        finally:
-            # This block is now INSIDE the 'async with'
-            if topdown_lock.locked():
-                topdown_lock.release()
+        # Lock is automatically released by 'async with'
+
+# --- END OF FIXED COMMAND ---
 
 
 @Client.on_message(filters.command('cleanmultdb') & filters.user(ADMINS))
