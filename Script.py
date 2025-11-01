@@ -110,4 +110,3 @@ class script(object):
 ᴅᴇᴠᴇʟᴏᴘᴇʀ - @ActualHomie"""
 
     # Removed PLAN_TXT
-}
