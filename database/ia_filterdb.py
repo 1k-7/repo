@@ -12,7 +12,6 @@ from info import (
     DATABASE_URIS, DATABASE_NAME, COLLECTION_NAME, # Use new DATABASE_URIS
     USE_CAPTION_FILTER, MAX_BTN, DB_MAX_SIZE_MB # <-- Import DB_MAX_SIZE_MB
 )
-from .users_chats_db import db as data_db # <-- Import the data_db to get/set settings
 # from utils import get_size # <--- REMOVED THIS LINE TO FIX CIRCULAR IMPORT
 
 logger = logging.getLogger(__name__)
