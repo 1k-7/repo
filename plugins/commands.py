@@ -18,6 +18,7 @@ from info import (URL, BIN_CHANNEL, INDEX_CHANNELS, ADMINS,
                   DELETE_TIME, SUPPORT_LINK, UPDATES_LINK, LOG_CHANNEL, PICS, IS_STREAM,
                   PM_FILE_DELETE_TIME, BOT_ID, PROTECT_CONTENT, TUTORIAL, # Keep PROTECT_CONTENT and TUTORIAL
                   IMDB, SPELL_CHECK, AUTO_DELETE, WELCOME, SHORTLINK, LINK_MODE # Keep group setting defaults
+                  # REMOVED SECOND_FILES_DATABASE_URL from here
                   )
 from utils import (get_settings, get_size, is_subscribed, is_check_admin, get_shortlink,
                    get_verify_status, update_verify_status, save_group_settings, temp,
@@ -307,7 +308,7 @@ async def stats_cmd(bot, message):
             logger.error(f"Stat collection error ({func.__name__ if hasattr(func, '__name__') else 'unknown'}): {e}")
             return "ᴇʀʀ" # Return error string
             
-    # Fetch stats concurrently where possible
+    # Fetch stats concurrently
     total_files_task = get_stat_safe(get_total_files_count)
     users_task = get_stat_safe(db.total_users_count)
     chats_task = get_stat_safe(db.total_chat_count)

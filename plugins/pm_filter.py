@@ -15,8 +15,8 @@ from info import (PICS, TUTORIAL, ADMINS, URL, MAX_BTN, BIN_CHANNEL,
                   DELETE_TIME, FILMS_LINK, LOG_CHANNEL, SUPPORT_GROUP, SUPPORT_LINK,
                   UPDATES_LINK, LANGUAGES, QUALITY, IS_STREAM, BOT_ID,
                   IS_VERIFY, VERIFY_TUTORIAL, VERIFY_EXPIRE,
-                  SHORTLINK_API, SHORTLINK_URL, SHORTLINK, PM_FILE_DELETE_TIME,
-                  SECOND_FILES_DATABASE_URL
+                  SHORTLINK_API, SHORTLINK_URL, SHORTLINK, PM_FILE_DELETE_TIME
+                  # REMOVED SECOND_FILES_DATABASE_URL from here
                   )
 from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto, Message
 from hydrogram import Client, filters, enums
@@ -25,8 +25,9 @@ from utils import (get_size, is_subscribed, is_check_admin, get_wish,
                    get_settings, save_group_settings,
                    get_verify_status, update_verify_status)
 from database.users_chats_db import db
-from database.ia_filterdb import get_search_results,delete_files, db_count_documents, second_db_count_documents
-from database.ia_filterdb import second_collection # Import second_collection object
+# Updated imports for new multi-DB stats
+from database.ia_filterdb import get_total_files_count
+# from database.ia_filterdb import second_collection # Removed obsolete import
 from plugins.commands import get_grp_stg
 import logging
 
@@ -641,27 +642,54 @@ async def cb_handler(client: Client, query: CallbackQuery):
         except Exception:
              try: sts_msg = await query.message.edit(" ɢᴀᴛʜᴇʀɪɴɢ ꜱᴛᴀᴛꜱ...")
              except: return await query.answer("ᴇʀʀᴏʀ ɪɴɪᴛɪᴀᴛɪɴɢ ꜱᴛᴀᴛꜱ.", show_alert=True)
+        
         async def get_stat_safe(func, *args):
             try: call_func = partial(func, *args) if args else func; return await loop.run_in_executor(None, call_func)
             except Exception as e: logger.error(f"Stat error {func.__name__ if hasattr(func, '__name__') else 'unknown'}: {e}"); return "ᴇʀʀ"
-        files = await get_stat_safe(db_count_documents)
-        users = await get_stat_safe(db.total_users_count)
-        chats = await get_stat_safe(db.total_chat_count)
-        used_files_db_size_raw = await get_stat_safe(db.get_files_db_size)
-        used_data_db_size_raw = await get_stat_safe(db.get_data_db_size)
-        used_files_db_size = get_size(used_files_db_size_raw) if isinstance(used_files_db_size_raw, (int, float)) else used_files_db_size_raw
+        
+        # --- Start Stats Fix ---
+        # Fetch stats concurrently
+        total_files_task = get_stat_safe(get_total_files_count)
+        users_task = get_stat_safe(db.total_users_count)
+        chats_task = get_stat_safe(db.total_chat_count)
+        data_db_size_task = get_stat_safe(db.get_data_db_size)
+        all_files_db_stats_task = get_stat_safe(db.get_all_files_db_stats)
+
+        total_files, users, chats, used_data_db_size_raw, all_files_db_stats = await asyncio.gather(
+            total_files_task,
+            users_task,
+            chats_task,
+            data_db_size_task,
+            all_files_db_stats_task
+        )
+        
+        # Format sizes
         used_data_db_size = get_size(used_data_db_size_raw) if isinstance(used_data_db_size_raw, (int, float)) else used_data_db_size_raw
-        secnd_files = '-'; secnd_files_db_used_size = '-'
-        if SECOND_FILES_DATABASE_URL and second_collection is not None:
-            secnd_files = await get_stat_safe(second_db_count_documents)
-            secnd_files_db_used_size_raw = await get_stat_safe(db.get_second_files_db_size)
-            secnd_files_db_used_size = get_size(secnd_files_db_used_size_raw) if isinstance(secnd_files_db_used_size_raw, (int, float)) else secnd_files_db_used_size_raw
+
+        # Format files DB stats string
+        db_stats_str = ""
+        if isinstance(all_files_db_stats, list):
+            for stat in all_files_db_stats:
+                if stat.get('error'):
+                    db_stats_str += f"│ 🗂️ {stat['name']}: <code>Error</code>\n"
+                else:
+                    db_stats_str += f"│ 🗂️ {stat['name']} ({stat.get('objects', 'N/A')}): <code>{get_size(stat['size'])}</code>\n"
+        else:
+            db_stats_str = "│ 🗂️ ꜰɪʟᴇ ᴅʙ ꜱᴛᴀᴛꜱ: <code>ᴇʀʀ</code>\n"
+        
         uptime = get_readable_time(time_now() - temp.START_TIME)
-        total_f = 0
-        if isinstance(files, int): total_f += files
-        if isinstance(secnd_files, int): total_f += secnd_files
-        total_files_str = str(total_f) if (isinstance(files, int) and (secnd_files == '-' or isinstance(secnd_files, int))) else "ᴇʀʀ"
-        stats_text = script.STATUS_TXT.format( users, chats, used_data_db_size, total_files_str, files, used_files_db_size, secnd_files, secnd_files_db_used_size, uptime ) # Font from Script.py
+        
+        # Format the final stats text
+        stats_text = script.STATUS_TXT.format(
+            users, 
+            chats, 
+            used_data_db_size, 
+            total_files, 
+            db_stats_str, 
+            uptime
+        )
+        # --- End Stats Fix ---
+        
         buttons = [[ InlineKeyboardButton('« ʙᴀᴄᴋ', callback_data='about') ]]
         try: await sts_msg.edit_media( media=InputMediaPhoto(random.choice(PICS), caption=stats_text), reply_markup=InlineKeyboardMarkup(buttons) )
         except MessageNotModified: pass
@@ -817,7 +845,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
         btn = await get_grp_stg(grp_id);
         pm_btn = [[ InlineKeyboardButton('ɢᴏ ᴛᴏ ᴘᴍ ➔', url=f"https://t.me/{temp.U_NAME}?start=settings_{grp_id}") ]]
         try: await client.send_message(userid, f"⚙️ ꜱᴇᴛᴛɪɴɢꜱ ꜰᴏʀ <b>'{query.message.chat.title}'</b>:", reply_markup=InlineKeyboardMarkup(btn)); await query.message.edit("✔️ ꜱᴇɴᴛ ᴛᴏ ᴘᴍ.", reply_markup=InlineKeyboardMarkup(pm_btn))
-        except Exception as e: logger.warning(f"PM settings error {userid}: {e}"); await query.answer(url=f"https://t.me/{temp.U_NAME}?start=settings_{grp_id}"); await query.message.edit("⚠️ ᴄʟɪᴄᴋ ʙᴜᴛᴛᴏɴ ᴛᴏ ᴏᴘᴇɴ ɪɴ ᴘᴍ.", reply_markup=InlineKeyboardMarkup(pm_btn))
+        except Exception as e: logger.warning(f"PM settings error {userid}: {e}"); await query.answer(url=f"https.me/{temp.U_NAME}?start=settings_{grp_id}"); await query.message.edit("⚠️ ᴄʟɪᴄᴋ ʙᴜᴛᴛᴏɴ ᴛᴏ ᴏᴘᴇɴ ɪɴ ᴘᴍ.", reply_markup=InlineKeyboardMarkup(pm_btn))
         return
 
     elif data.startswith("delete"):
