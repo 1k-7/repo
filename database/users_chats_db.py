@@ -266,7 +266,7 @@ class Database:
     def get_all_chats(self):
         return self.grp.find({})
 
-   def get_all_files_db_stats(self):
+    def get_all_files_db_stats(self):
         """Gets stats for all connected file databases."""
         stats = []
         if not file_db_clients:
