@@ -570,6 +570,7 @@ async def topdown_cmd(bot, message):
             logger.error(f"Fatal /topdown error: {e}", exc_info=True)
             await sts_msg.edit(f"❌ ꜰᴀᴛᴀʟ ᴇʀʀᴏʀ ᴅᴜʀɪɴɢ ᴛᴏᴘᴅᴏᴡɴ: {e}")
         finally:
+            # This block is now INSIDE the 'async with'
             if topdown_lock.locked():
                 topdown_lock.release()
 
@@ -682,9 +683,6 @@ async def clean_multi_db_duplicates(bot, message):
     except Exception as e:
         logger.error(f"/cleanmultdb error: {e}", exc_info=True)
         await sts_msg.edit(f"❌ ᴀɴ ᴇʀʀᴏʀ ᴏᴄᴄᴜʀʀᴇᴅ ᴅᴜʀɪɴɢ ᴄʟᴇᴀɴᴜᴘ: {e}")
-    finally:
-        if topdown_lock.locked():
-            topdown_lock.release()
 
 
 @Client.on_message(filters.command('set_fsub') & filters.user(ADMINS))

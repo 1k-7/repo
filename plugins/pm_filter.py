@@ -681,13 +681,18 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 
             uptime = get_readable_time(time_now() - temp.START_TIME)
             
+            # Get active DB index
+            stg = await loop.run_in_executor(None, db.get_bot_sttgs) # Get settings
+            current_db_index = stg.get('CURRENT_DB_INDEX', 0) # Get the index
+            
             # Format the final stats text
             stats_text = script.STATUS_TXT.format(
                 users, 
                 chats, 
                 used_data_db_size, 
-                total_files, 
-                db_stats_str, 
+                total_files,
+                current_db_index + 1, # Pass the active DB index (1-based)
+                db_stats_str.rstrip('\n'), 
                 uptime
             )
             # --- End Stats Fix ---
