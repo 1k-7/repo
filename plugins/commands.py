@@ -476,7 +476,7 @@ topdown_lock = asyncio.Lock() # Lock to prevent running /topdown twice
 
 @Client.on_message(filters.command('topdown') & filters.user(ADMINS))
 async def topdown_cmd(bot, message):
-    """Moves 10% of files from other DBs to the active DB."""
+    """Moves 10% of files from other DBs to the target DB."""
     global topdown_lock
     if topdown_lock.locked():
         return await message.reply("⚠️ ᴀ ᴛᴏᴘᴅᴏᴡɴ ᴘʀᴏᴄᴇꜱꜱ ɪꜱ ᴀʟʀᴇᴀᴅʏ ʀᴜɴɴɪɴɢ.")
@@ -526,10 +526,11 @@ async def topdown_cmd(bot, message):
                 
                 try:
                     coll_count = await loop.run_in_executor(None, partial(source_coll.count_documents, {}))
-                    limit = int(coll_count * 0.10) # 10%
+                    # Ensure at least 1 file is moved if 10% is 0 but count > 0
+                    limit = max(int(coll_count * 0.10), 1 if coll_count > 0 else 0) # 10% or at least 1
                     
                     if limit == 0:
-                        logger.info(f"Skipping {source_db_name}, 10% is 0.")
+                        logger.info(f"Skipping {source_db_name}, no files to move.")
                         continue
                     
                     # Fetch the full documents to move
@@ -538,7 +539,6 @@ async def topdown_cmd(bot, message):
                         logger.info(f"No documents found to move from {source_db_name}.")
                         continue
                     
-                    ids_to_move = [doc['_id'] for doc in docs_to_move]
                     inserted_ids = []
                     
                     try:
@@ -548,17 +548,31 @@ async def topdown_cmd(bot, message):
                         total_moved += len(inserted_ids)
                         
                     except BulkWriteError as bwe:
-                        # Some docs were inserted, some failed (likely duplicates)
-                        inserted_ids = [d['_id'] for d in bwe.details.get('inserted_ops', [])]
+                        # --- START OF FIX ---
+                        
+                        # Get indexes of failed operations from the original batch
+                        failed_indexes = {e['index'] for e in bwe.details.get('writeErrors', [])}
+                        
+                        # Build the list of successfully inserted documents by excluding failed ones
+                        successfully_inserted_docs = [
+                            doc for i, doc in enumerate(docs_to_move) 
+                            if i not in failed_indexes
+                        ]
+                        
+                        # Get the _id's of the successful documents
+                        inserted_ids = [doc['_id'] for doc in successfully_inserted_docs]
                         total_moved += len(inserted_ids)
                         
+                        # Count duplicate vs other errors
                         dupe_errors = sum(1 for e in bwe.details.get('writeErrors', []) if e.get('code') == 11000)
                         total_failed_duplicates += dupe_errors
                         total_failed_other += len(bwe.details.get('writeErrors', [])) - dupe_errors
                         
+                        # --- END OF FIX ---
+                        
                     except Exception as insert_e:
                         # Check if target DB became full during transfer
-                        if "quota" in str(insert_e).lower():
+                        if "quota" in str(insert_e).lower() or (hasattr(insert_e, 'code') and insert_e.code == 8000):
                             logger.error(f"Target DB {active_db_name} is now full. Aborting.")
                             await sts_msg.edit(f"❌ ᴛᴀʀɢᴇᴛ ᴅʙ {active_db_name} ʙᴇᴄᴀᴍᴇ ꜰᴜʟʟ. ᴀʙᴏʀᴛɪɴɢ.")
                             return # Stop the entire /topdown command
@@ -569,8 +583,11 @@ async def topdown_cmd(bot, message):
                     # Delete *only* the successfully inserted documents from the source DB
                     if inserted_ids:
                         try:
-                            await loop.run_in_executor(None, partial(source_coll.delete_many, {'_id': {'$in': inserted_ids}}))
-                            logger.info(f"Moved {len(inserted_ids)} docs from {source_db_name} to {active_db_name}.")
+                            del_result = await loop.run_in_executor(None, partial(source_coll.delete_many, {'_id': {'$in': inserted_ids}}))
+                            deleted_count = del_result.deleted_count if del_result else 0
+                            logger.info(f"Moved {deleted_count} docs from {source_db_name} to {active_db_name}.")
+                            if deleted_count != len(inserted_ids):
+                                logger.warning(f"Deletion mismatch: Tried to delete {len(inserted_ids)}, but {deleted_count} were deleted from {source_db_name}.")
                         except Exception as del_e:
                             logger.error(f"CRITICAL: Failed to delete moved docs from {source_db_name}! {del_e}")
                             await sts_msg.edit(f"❌ ᴄʀɪᴛɪᴄᴀʟ ᴇʀʀᴏʀ!\nꜰᴀɪʟᴇᴅ ᴛᴏ ᴅᴇʟᴇᴛᴇ {len(inserted_ids)} ᴅᴏᴄꜱ ꜰʀᴏᴍ {source_db_name} ᴀꜰᴛᴇʀ ᴛʀᴀɴꜱꜰᴇʀ.\n\nᴘʟᴇᴀꜱᴇ ᴄʜᴇᴄᴋ ʟᴏɢꜱ. /cleanmultdb ɪꜱ ʀᴇᴄᴏᴍᴍᴇɴᴅᴇᴅ.")
@@ -586,7 +603,7 @@ async def topdown_cmd(bot, message):
                 f"⏱️ ᴛᴏᴏᴋ: <code>{elapsed}</code>\n"
                 f"🎯 ᴛᴀʀɢᴇᴛ ᴅʙ: {active_db_name}\n\n"
                 f"~ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ᴍᴏᴠᴇᴅ: <code>{total_moved}</code> ꜰɪʟᴇꜱ\n"
-                f"~ ꜰᴀɪʟᴇᴅ (ᴅᴜᴘʟɪᴄᴀᴛᴇꜱ): <code>{total_failed_duplicates}</code>\n"
+                f"~ ꜰᴀɪʟᴇᴅ (ᴅᴜᴘʟɪᴄᴀᴛᴇꜱ ᴏɴ ɪɴꜱᴇʀᴛ): <code>{total_failed_duplicates}</code>\n"
                 f"~ ꜰᴀɪʟᴇᴅ (ᴏᴛʜᴇʀ ᴇʀʀᴏʀꜱ): <code>{total_failed_other}</code>"
             )
             
